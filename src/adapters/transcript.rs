@@ -13,7 +13,7 @@ use std::sync::Mutex;
 use super::claude::tool_step;
 use crate::app::{post, UiMsg};
 use crate::config::Config;
-use crate::model::{Agent, AgentEvent, EventKind};
+use crate::model::{Agent, AgentEvent, EventKind, SubEvent};
 use crate::util::{clip, now_unix, parse_rfc3339};
 use crate::watch::{recent_files, watch_dir, Tailer};
 
@@ -160,6 +160,88 @@ pub fn parse_line(line: &str, wsl: &str, mode: Mode) -> Option<AgentEvent> {
     Some(ev)
 }
 
+/// projects/<project>/<session>/subagents/agent-<id>.jsonl (or .meta.json)
+/// -> (session id, agent id, is the meta file)
+fn sub_file(root: &Path, p: &Path) -> Option<(String, String, bool)> {
+    let rest = p.file_name()?.to_str()?.strip_prefix("agent-")?;
+    let (id, meta) = match rest.strip_suffix(".meta.json") {
+        Some(id) => (id, true),
+        None => (rest.strip_suffix(".jsonl")?, false),
+    };
+    let dir = p.parent()?;
+    if dir.file_name()? != "subagents" {
+        return None;
+    }
+    let session = dir.parent()?;
+    (session.parent()?.parent()? == root).then(|| (session.file_name().unwrap_or_default().to_string_lossy().to_string(), id.to_string(), meta))
+}
+
+#[derive(Deserialize)]
+struct SubMeta {
+    #[serde(rename = "agentType")]
+    agent_type: Option<String>,
+    description: Option<String>,
+    finished: Option<bool>,
+}
+
+/// News about one subagent from its files: the meta file says what it is and whether it
+/// has finished; the newest tool call in its transcript says what it is doing.
+fn read_sub(tailer: &mut Tailer, root: &Path, p: &Path, out: &mut Vec<AgentEvent>) {
+    let Some((sid, id, is_meta)) = sub_file(root, p) else { return };
+    let meta: Option<SubMeta> = p.parent().and_then(|d| std::fs::read(d.join(format!("agent-{id}.meta.json"))).ok()).and_then(|b| serde_json::from_slice(&b).ok());
+    let mut step = None;
+    if !is_meta {
+        for line in tailer.read_new(p, 48 * 1024, MAX_LINE) {
+            if !line.contains("\"tool_use\"") {
+                continue;
+            }
+            let Ok(l) = serde_json::from_str::<Line>(&line) else { continue };
+            let tool = l.message.as_ref().and_then(|m| m.content.as_ref()).and_then(|c| c.as_array()).and_then(|a| a.iter().rev().find(|b| b.get("type").and_then(|t| t.as_str()) == Some("tool_use")).cloned());
+            if let Some(t) = tool {
+                step = Some(tool_step(t.get("name").and_then(|n| n.as_str()).unwrap_or(""), t.get("input").unwrap_or(&Value::Null)));
+            }
+        }
+    }
+    if meta.is_none() && step.is_none() {
+        return;
+    }
+    let (kind, ended) = match &meta {
+        Some(m) => {
+            let label = match (m.description.as_deref().unwrap_or(""), m.agent_type.as_deref().unwrap_or("")) {
+                ("", t) => t.to_string(),
+                (d, "") => d.to_string(),
+                (d, t) => format!("{d} ({t})"),
+            };
+            (clip(&label, 60), m.finished == Some(true))
+        }
+        None => (String::new(), false),
+    };
+    let mut ev = AgentEvent::new(Agent::Claude, &sid, "", EventKind::Info);
+    ev.live = false;
+    ev.sub = Some(SubEvent { id, kind, step, ended });
+    out.push(ev);
+}
+
+/// Subagents that are running right now: meta files touched in the last half hour that
+/// are not marked finished.
+fn backfill_subs(root: &Path, tailer: &mut Tailer) {
+    let mut metas = Vec::new();
+    recent_files(root, 3, 1800, &|p| sub_file(root, p).map(|s| s.2).unwrap_or(false), &mut metas);
+    let mut evs = Vec::new();
+    for m in metas {
+        let transcript = PathBuf::from(m.to_string_lossy().replace(".meta.json", ".jsonl"));
+        let mut one = Vec::new();
+        read_sub(tailer, root, &transcript, &mut one);
+        if one.is_empty() {
+            read_sub(tailer, root, &m, &mut one);
+        }
+        evs.extend(one.into_iter().filter(|e| e.sub.as_ref().map(|s| !s.ended).unwrap_or(false)));
+    }
+    if !evs.is_empty() {
+        post(UiMsg::Events(evs));
+    }
+}
+
 fn head_has_bridge(path: &Path) -> bool {
     use std::io::Read;
     let Ok(f) = std::fs::File::open(path) else { return false };
@@ -235,6 +317,7 @@ pub fn start(cfg: &Config) {
         let mut tailer = Tailer::default();
         if root.is_dir() {
             backfill(&root, "", keep, &mut tailer);
+            backfill_subs(&root, &mut tailer);
         }
         if wsl_enabled {
             // WSL file systems do not deliver change notifications, so they are read once
@@ -253,6 +336,8 @@ pub fn start(cfg: &Config) {
             for p in changed {
                 if is_session_file(&r2, &p) {
                     read_file(&mut tailer, &p, "", &mut evs);
+                } else {
+                    read_sub(&mut tailer, &r2, &p, &mut evs);
                 }
             }
             if !evs.is_empty() {
@@ -293,6 +378,17 @@ mod tests {
         assert_eq!(parse_line(title, "", Mode::Assist).unwrap().title.as_deref(), Some("Build notch"));
         assert!(parse_line(r#"{"type":"bridge-session","bridgeSessionId":"b","sessionId":"s"}"#, "", Mode::Assist).unwrap().remote);
         assert!(parse_line(r#"{"type":"api-request","sessionId":"s"}"#, "", Mode::Full).is_none());
+    }
+
+    #[test]
+    fn subagent_files() {
+        let root = Path::new("C:/u/.claude/projects");
+        let p = root.join("proj").join("sess-1").join("subagents").join("agent-a1b2.jsonl");
+        assert_eq!(sub_file(root, &p), Some(("sess-1".into(), "a1b2".into(), false)));
+        let m = root.join("proj").join("sess-1").join("subagents").join("agent-a1b2.meta.json");
+        assert_eq!(sub_file(root, &m), Some(("sess-1".into(), "a1b2".into(), true)));
+        assert_eq!(sub_file(root, &root.join("proj").join("sess-1.jsonl")), None);
+        assert_eq!(sub_file(root, &root.join("proj").join("sess-1").join("tool-results").join("agent-x.jsonl")), None);
     }
 
     #[test]

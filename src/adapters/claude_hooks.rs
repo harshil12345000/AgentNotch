@@ -62,8 +62,13 @@ fn is_ours(handler: &Value) -> bool {
     cmd.contains("notch") && (in_args || cmd.contains("--hook"))
 }
 
-fn handler(t: &Target) -> Value {
-    if t.exec_form {
+fn handler(t: &Target, event: &str) -> Value {
+    if t.exec_form && event == "PermissionRequest" {
+        // The one hook that waits: it can carry an Approve / Deny from the notch back to
+        // Claude Code. The helper exits at once when the notch is not running or does not
+        // offer the buttons for this session.
+        json!({ "type": "command", "command": t.command, "args": t.args, "timeout": 600 })
+    } else if t.exec_form {
         // async: Claude Code never waits for us. timeout: belt and braces.
         json!({ "type": "command", "command": t.command, "args": t.args, "async": true, "timeout": 5 })
     } else {
@@ -187,7 +192,7 @@ pub fn install(t: &Target) -> Result<String, String> {
     for ev in t.events.iter().copied() {
         let groups = hooks.entry(ev).or_insert_with(|| Value::Array(Vec::new()));
         let groups = groups.as_array_mut().ok_or(format!("hooks.{ev} is not an array; left untouched"))?;
-        groups.push(json!({ "hooks": [handler(t)] }));
+        groups.push(json!({ "hooks": [handler(t, ev)] }));
     }
     write_atomic(&t.settings, &render(&root, original.as_deref()))?;
     Ok(format!("Hooks installed in {} ({} events). Backup: {}", t.settings.display(), t.events.len(), if bak.exists() { bak.display().to_string() } else { "none (file did not exist)".into() }))

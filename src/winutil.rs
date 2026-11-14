@@ -184,6 +184,13 @@ pub fn attach_console() {
     }
 }
 
+/// Open a link with whatever app is registered for it.
+pub fn open_url(url: &str) -> bool {
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    let u = wide(url);
+    unsafe { ShellExecuteW(None, w!("open"), PCWSTR(u.as_ptr()), PCWSTR::null(), PCWSTR::null(), SW_SHOWNORMAL).0 as isize > 32 }
+}
+
 /// Release pages that are no longer needed back to the system.
 pub fn trim_working_set() {
     unsafe {

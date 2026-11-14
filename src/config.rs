@@ -9,6 +9,11 @@ pub struct Config {
     pub theme: String,
     /// Global hotkey that hides / shows the notch, e.g. "Ctrl+\\". Empty = none.
     pub hotkey: String,
+    /// Show Approve / Deny on a session that is asking for permission.
+    pub approve_from_notch: bool,
+    /// Also do that for terminal sessions. Off by default: there the hook may hold back
+    /// Claude Code's own prompt until it is answered in the notch.
+    pub approve_in_terminal: bool,
     /// Blur what is behind the island (glass). Off = solid panel.
     pub glass: bool,
     pub hover_expand: bool,
@@ -98,6 +103,8 @@ impl Default for Config {
         Config {
             theme: "dark".into(),
             hotkey: "Ctrl+\\".into(),
+            approve_from_notch: true,
+            approve_in_terminal: false,
             glass: false,
             hover_expand: true,
             hide_when_idle: false,

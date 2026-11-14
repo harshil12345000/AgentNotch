@@ -85,6 +85,16 @@ pub struct AgentEvent {
     pub at: u64,
     /// The session is being followed through Remote Control.
     pub remote: bool,
+    /// The desktop app's id for this session, used to jump straight to it.
+    pub host: Option<String>,
+    /// Listed in Claude Code's registry of open sessions: stays in the list while its
+    /// process lives, finished or not.
+    pub open: bool,
+    /// Runs inside a host (the desktop app, an SDK app) that shows permission prompts
+    /// itself, alongside any hook.
+    pub hosted: bool,
+    /// The agent's own word on its state (the registry). Accepted even when hooks are live.
+    pub trusted: bool,
     /// Subagent news. Never changes the session's own state.
     pub sub: Option<SubEvent>,
     /// Read from the session's own record of a turn ending. Trusted even when hooks are
@@ -108,6 +118,10 @@ impl AgentEvent {
             soft: false,
             at: now_unix(),
             remote: false,
+            host: None,
+            open: false,
+            hosted: false,
+            trusted: false,
             sub: None,
             turn_end: false,
             alias: None,
@@ -141,6 +155,15 @@ pub struct Session {
     pub remote: bool,
     /// Subagents running inside this session right now.
     pub subs: Vec<Sub>,
+    /// The desktop app's id for this session ("local_..."), empty for terminal sessions.
+    pub host: String,
+    /// In Claude Code's registry of open sessions.
+    pub open: bool,
+    /// When the current state began (unix seconds).
+    pub state_since: u64,
+    pub hosted: bool,
+    /// A permission request waiting for Approve / Deny: the pipe its hook listens on.
+    pub pending: Option<String>,
 }
 
 impl Session {
@@ -155,6 +178,15 @@ impl Session {
     }
     pub fn active(&self) -> bool {
         matches!(self.state, State::Working | State::NeedsInput)
+    }
+    /// Should the dot pulse? Needs-input pulses until it is answered. Finished and error
+    /// pulse for a minute and a half, then settle, so an idle session costs no redraws.
+    pub fn pulsing(&self, now: u64) -> bool {
+        match self.state {
+            State::Working => false,
+            State::NeedsInput => true,
+            State::Done | State::Error => now.saturating_sub(self.state_since) < 90,
+        }
     }
 }
 
@@ -174,7 +206,7 @@ pub struct Store {
     /// Aliases of sessions that a wrapper (T3 Code) already shows.
     wrapped: Vec<String>,
     /// Titles (and Remote Control markers) seen before the session itself showed up.
-    early: std::collections::HashMap<String, (String, bool)>,
+    early: std::collections::HashMap<String, (String, bool, Vec<SubEvent>)>,
     /// Most recent project dir seen on a live event (used by Remote Control).
     pub last_dir: String,
 }
@@ -213,6 +245,12 @@ impl Store {
                         e.0 = crate::util::clip(t, 60);
                     }
                     e.1 |= ev.remote;
+                    if let Some(sub) = &ev.sub {
+                        e.2.retain(|x| x.id != sub.id);
+                        if !sub.ended {
+                            e.2.push(sub.clone());
+                        }
+                    }
                     if self.early.len() > 64 {
                         self.early.clear();
                     }
@@ -221,7 +259,7 @@ impl Store {
                 if ev.kind == EventKind::SessionEnded {
                     return None;
                 }
-                let (early_title, early_remote) = self.early.remove(&ev.session_id).unwrap_or_default();
+                let (early_title, early_remote, early_subs) = self.early.remove(&ev.session_id).unwrap_or_default();
                 self.sessions.push(Session {
                     id: ev.session_id.clone(),
                     agent: ev.agent,
@@ -235,7 +273,12 @@ impl Store {
                     finished: None,
                     live: false,
                     remote: early_remote,
-                    subs: Vec::new(),
+                    subs: early_subs.into_iter().map(|x| Sub { id: x.id, kind: x.kind, step: x.step.unwrap_or_default(), last: ev.at }).collect(),
+                    host: String::new(),
+                    open: false,
+                    state_since: ev.at,
+                    hosted: false,
+                    pending: None,
                 });
                 self.sessions.len() - 1
             }
@@ -262,7 +305,8 @@ impl Store {
                         if let Some(step) = &sub.step {
                             x.step = step.clone();
                         }
-                        if !sub.kind.is_empty() {
+                        // the longer label wins (a description beats a bare agent type)
+                        if sub.kind.len() > x.kind.len() {
                             x.kind = sub.kind.clone();
                         }
                         x.last = ev.at;
@@ -274,13 +318,22 @@ impl Store {
         if ev.remote {
             s.remote = true;
         }
+        if ev.open {
+            s.open = true;
+        }
+        if ev.hosted {
+            s.hosted = true;
+        }
+        if let Some(h) = &ev.host {
+            s.host = h.clone();
+        }
         if ev.kind == EventKind::Info {
             return None;
         }
         // Once hooks are flowing for a session, file backfill must not fight them.
         if !ev.live && s.live {
             // ...except the end of a turn, when nothing live has happened since
-            if !(ev.turn_end && ev.at >= s.last_event) {
+            if !((ev.turn_end || ev.trusted) && ev.at >= s.last_event) {
                 return None;
             }
         }
@@ -345,10 +398,14 @@ impl Store {
                 s.step = "session ended".into();
                 s.pids.clear();
                 s.subs.clear();
+                s.open = false;
                 // Ended sessions leave quickly: keep them one minute at most.
                 s.finished = Some(s.finished.unwrap_or(ev.at).min(ev.at));
                 s.last_event = 0;
             }
+        }
+        if s.state != prev {
+            s.state_since = ev.at;
         }
         // Only things that just happened alert: replayed history (startup backfill, the
         // tail of a file seen for the first time) never does.
@@ -397,6 +454,8 @@ impl Store {
             }
         }
         self.sessions.retain(|s| match s.finished {
+            // an open session stays listed while its process lives, even when it is idle
+            Some(_) if !s.active() && s.open && s.pids.first().map(|p| alive(*p)).unwrap_or(false) => true,
             Some(f) if !s.active() => {
                 let keep = if s.last_event == 0 { 60.min(keep_secs) } else { keep_secs };
                 now.saturating_sub(f) < keep
@@ -566,6 +625,42 @@ mod tests {
         assert_eq!(st.sessions[0].state, State::Done); // the main session is still finished
         st.apply(sub(None, true));
         assert!(st.sessions[0].subs.is_empty());
+    }
+    #[test]
+    fn open_sessions_stay_listed_and_registry_state_is_trusted() {
+        let mut st = Store::default();
+        let mut live = ev(EventKind::Working { step: "Bash: ls".into() });
+        live.pids = vec![7];
+        st.apply(live);
+        // the registry says the session is waiting for the user: accepted although hooks are live
+        let mut reg = ev(EventKind::NeedsInput { reason: "approve Bash".into() });
+        reg.live = false;
+        reg.trusted = true;
+        reg.open = true;
+        reg.host = Some("local_abc".into());
+        assert!(matches!(st.apply(reg), Some(Alert::NeedsInput { .. })));
+        assert_eq!(st.sessions[0].state, State::NeedsInput);
+        assert_eq!(st.sessions[0].host, "local_abc");
+        // finished long ago, but open and its process alive: still listed
+        st.apply(ev(EventKind::Done));
+        st.sessions[0].finished = Some(now_unix() - 5000);
+        assert!(!st.expire(120, 600, &|_| true));
+        assert_eq!(st.sessions.len(), 1);
+        // process gone: it leaves
+        st.expire(120, 600, &|_| false);
+        assert!(st.sessions.is_empty());
+    }
+    #[test]
+    fn pulse_settles() {
+        let mut st = Store::default();
+        st.apply(ev(EventKind::Working { step: "x".into() }));
+        let now = now_unix();
+        assert!(!st.sessions[0].pulsing(now));
+        st.apply(ev(EventKind::Done));
+        assert!(st.sessions[0].pulsing(now));
+        assert!(!st.sessions[0].pulsing(now + 120));
+        st.apply(ev(EventKind::NeedsInput { reason: "q".into() }));
+        assert!(st.sessions[0].pulsing(now + 100_000));
     }
     #[test]
     fn expiry() {

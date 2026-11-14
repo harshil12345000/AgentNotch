@@ -55,6 +55,10 @@ pub enum UiMsg {
     Usage(Usage),
     /// A toast was clicked: bring this session's window to the front.
     Focus(String),
+    /// A permission hook is waiting for an answer: (session id, reply pipe).
+    Permission(String, String),
+    /// Approve (true) or deny the pending permission request of a session.
+    Decide(String, bool),
 }
 
 /// Thread-safe: hand a message to the UI thread.
@@ -139,6 +143,8 @@ pub struct Opts {
     pub settings: bool,
     /// Skip the first-run question and all toasts (tests, bench).
     pub no_prompt: bool,
+    /// Tests only: offer Approve / Deny for every session, hosted or not.
+    pub hold_all: bool,
     /// Snapshot / demo only: dock to this edge ("top", "bottom", "left", "right", "free") at `at` (0..1).
     pub edge: Option<String>,
     pub at: Option<f32>,
@@ -216,6 +222,7 @@ pub struct App {
     locked: bool,
     demo: bool,
     pub hooks_installed: bool,
+    hold_all: bool,
     quiet: bool,
     glass: bool,
     region: (i32, i32, i32, i32, i32),
@@ -548,7 +555,8 @@ impl App {
     /// Timers only run while there is something to animate or count.
     fn update_timers(&mut self) {
         // only sessions that want a human (needs input, finished, error) pulse
-        let attention = self.store.sessions.iter().any(|s| s.state != crate::model::State::Working);
+        let now = crate::util::now_unix();
+        let attention = self.store.sessions.iter().any(|s| s.pulsing(now));
         self.timer(T_PULSE, (self.shown && attention).then_some(125));
         self.timer(T_SECOND, (self.shown && self.expanded && self.view == View::Main).then_some(1000));
         self.timer(T_HOVERWATCH, (self.shown && self.expanded).then_some(150));
@@ -751,6 +759,38 @@ impl App {
         self.invalidate();
     }
 
+    /// Answer the permission request session `i` is waiting on.
+    fn decide(&mut self, i: usize, allow: bool) {
+        let Some(s) = self.store.sessions.get_mut(i) else { return };
+        match s.pending.take() {
+            Some(pipe) => {
+                crate::ipc::reply_to(pipe, if allow { "allow" } else { "deny" });
+                logln!("permission: {} from the notch", if allow { "approved" } else { "denied" });
+                s.step = if allow { "Approved".into() } else { "Denied".into() };
+                self.kick();
+                self.invalidate();
+            }
+            // nothing is waiting any more (answered elsewhere): take the user to the session
+            None => self.click_session(i),
+        }
+    }
+
+    /// A permission hook is waiting. Offer Approve / Deny when this session's own prompt
+    /// stays available alongside the hook (desktop app and SDK hosts); otherwise let the
+    /// hook go at once so Claude Code asks as usual.
+    fn on_permission(&mut self, sid: String, pipe: String) {
+        let offer = self.cfg.approve_from_notch;
+        let (terminal_too, hold_all) = (self.cfg.approve_in_terminal, self.hold_all);
+        match self.store.sessions.iter_mut().find(|s| s.id == sid) {
+            Some(s) if offer && (s.hosted || terminal_too || hold_all) => {
+                if let Some(old) = s.pending.replace(pipe) {
+                    crate::ipc::reply_to(old, "pass");
+                }
+            }
+            _ => crate::ipc::reply_to(pipe, "pass"),
+        }
+    }
+
     /// Show the notch and open it for a moment (shortcut clicked while already running).
     fn summon(&mut self) {
         self.user_hidden = false;
@@ -768,12 +808,12 @@ impl App {
 
     fn on_wheel(&mut self, delta: i32) {
         let n = self.store.sessions.len();
-        let rows = ui::max_rows(self);
-        if !self.expanded || self.view != View::Main || n <= rows {
+        let (first, shown) = ui::visible_rows(self);
+        if !self.expanded || self.view != View::Main || n == 0 {
             return;
         }
-        let max = n - rows;
-        let ns = if delta < 0 { (self.scroll + 1).min(max) } else { self.scroll.saturating_sub(1) };
+        // down only while something is still below the last visible row
+        let ns = if delta < 0 { if first + shown < n { first + 1 } else { first } } else { first.saturating_sub(1) };
         if ns != self.scroll {
             self.scroll = ns;
             self.invalidate();
@@ -799,7 +839,13 @@ impl App {
                 self.update_timers();
             }
             Action::Session(i) => self.click_session(i),
+            Action::Approve(i) => self.decide(i, true),
+            Action::Deny(i) => self.decide(i, false),
             Action::Dismiss(i) => {
+                // a waiting permission hook goes back to Claude Code's own prompt
+                if let Some(pipe) = self.store.sessions.get_mut(i).and_then(|s| s.pending.take()) {
+                    crate::ipc::reply_to(pipe, "pass");
+                }
                 self.store.dismiss(i);
                 self.hover = None;
                 self.update_visibility();
@@ -879,6 +925,7 @@ impl App {
                     (crate::util::clip(crate::util::base_name(&c.remote_control.default_dir), 22), false)
                 }
             }
+            Setting::Approve => onoff(c.approve_from_notch),
             Setting::Hooks => {
                 if self.hooks_installed {
                     ("Installed · click to remove".to_string(), true)
@@ -956,6 +1003,7 @@ impl App {
             Setting::RcTerminal => self.cfg.remote_control.terminal = cycle(&self.cfg.remote_control.terminal, &["wt", "powershell", "wsl"]),
             Setting::RcFolder => self.pick_rc_folder(),
             Setting::Hooks => self.toggle_hooks(),
+            Setting::Approve => self.cfg.approve_from_notch ^= true,
         }
         config::save(&self.cfg);
         self.update_visibility();
@@ -1017,7 +1065,13 @@ impl App {
     fn click_session(&mut self, i: usize) {
         let Some(s) = self.store.sessions.get(i) else { return };
         self.selected = Some(s.id.clone());
-        let how = crate::proc::focus_session(&s.pids, &s.dir);
+        // A session inside the Claude desktop app has its own address there: open it, which
+        // switches the app to exactly that session. Anything else: raise its window.
+        let how = if s.host.starts_with("local_") && winutil::open_url(&format!("claude://claude.ai/epitaxy/{}", s.host)) {
+            "app link"
+        } else {
+            crate::proc::focus_session(&s.pids, &s.dir)
+        };
         logln!("focus: {} -> {how}", s.agent.label());
     }
     // ---- Remote Control
@@ -1207,7 +1261,11 @@ impl App {
             let id = match &a {
                 Alert::NeedsInput { id, .. } | Alert::Done { id, .. } | Alert::Error { id, .. } => id,
             };
-            crate::toast::show(title, body, !n.sound, crate::toast::focus_link(id));
+            // a permission request gets Approve / Deny buttons on the toast as well
+            let can_decide = self.cfg.approve_from_notch
+                && matches!(&a, Alert::NeedsInput { reason, .. } if reason.starts_with("Permission"))
+                && self.store.sessions.iter().any(|s| &s.id == id && (s.hosted || self.cfg.approve_in_terminal || self.hold_all));
+            crate::toast::show(title, body, !n.sound, crate::toast::focus_link(id), can_decide.then(|| id.clone()));
         } else if n.sound {
             winutil::beep();
         }
@@ -1227,12 +1285,25 @@ impl App {
                 }
             }
             UiMsg::Usage(u) => self.on_usage(u),
+            UiMsg::Permission(sid, pipe) => self.on_permission(sid, pipe),
+            UiMsg::Decide(id, allow) => match self.store.sessions.iter().position(|s| s.id == id) {
+                Some(i) => self.decide(i, allow),
+                None => self.summon(),
+            },
             UiMsg::Focus(id) => {
                 if let Some(i) = self.store.sessions.iter().position(|s| s.id == id) {
                     self.click_session(i);
                 } else {
                     // the session is gone from the list: at least show the notch
                     self.summon();
+                }
+            }
+        }
+        // a request that is no longer waiting (answered in Claude, or the turn moved on)
+        for s in self.store.sessions.iter_mut() {
+            if s.pending.is_some() && s.state != crate::model::State::NeedsInput {
+                if let Some(pipe) = s.pending.take() {
+                    crate::ipc::reply_to(pipe, "pass");
                 }
             }
         }
@@ -1315,7 +1386,16 @@ impl App {
 
     fn on_timer(&mut self, id: usize) {
         match id {
-            T_PULSE => self.pulse_dirty = true,
+            T_PULSE => {
+                let now = crate::util::now_unix();
+                if self.store.sessions.iter().any(|s| s.pulsing(now)) {
+                    self.pulse_dirty = true;
+                } else {
+                    // the last pulse has settled: stop the timer and draw the steady dots once
+                    self.update_timers();
+                    self.invalidate();
+                }
+            }
             T_COALESCE => {
                 if self.redraw_pending {
                     self.redraw_pending = false;
@@ -1612,6 +1692,7 @@ pub fn run(opts: Opts) -> i32 {
             // demo, snapshot and isolated test instances never call the usage endpoint
             demo: opts.demo || snapshot || !crate::util::instance_suffix().is_empty(),
             hooks_installed: false,
+            hold_all: opts.hold_all,
             quiet: opts.bench.is_some() || opts.demo,
             glass: false,
             region: (0, 0, 0, 0, 0),

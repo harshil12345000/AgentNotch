@@ -101,6 +101,7 @@ impl AgentAdapter for Claude {
     }
 
     fn start(&self, cfg: &Config) {
+        crate::adapters::registry::start();
         crate::adapters::transcript::start(cfg);
     }
 

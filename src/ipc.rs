@@ -27,8 +27,14 @@ fn handle(bytes: &[u8], need_token: Option<&str>) {
     let agent = v.get("agent").and_then(|a| a.as_str()).unwrap_or("claude");
     if agent == "notch" {
         // from `notch.exe --activate`: a toast was clicked
-        if let Some(sid) = v.get("p").and_then(|p| p.get("focus")).and_then(|s| s.as_str()) {
+        let p = v.get("p");
+        if let Some(sid) = p.and_then(|p| p.get("focus")).and_then(|s| s.as_str()) {
             post(UiMsg::Focus(sid.to_string()));
+        }
+        // Approve / Deny from a toast button or `notch.exe --decide`
+        if let Some(sid) = p.and_then(|p| p.get("decide")).and_then(|s| s.as_str()) {
+            let allow = p.and_then(|p| p.get("allow")).and_then(|a| a.as_bool()).unwrap_or(false);
+            post(UiMsg::Decide(sid.to_string(), allow));
         }
         return;
     }
@@ -39,6 +45,30 @@ fn handle(bytes: &[u8], need_token: Option<&str>) {
     if !evs.is_empty() {
         post(UiMsg::Events(evs));
     }
+    // a permission request whose hook is waiting for an answer
+    if let Some(reply) = v.get("reply").and_then(|r| r.as_str()).filter(|r| !r.is_empty()) {
+        let sid = payload.get("session_id").and_then(|s| s.as_str()).unwrap_or("");
+        post(UiMsg::Permission(sid.to_string(), reply.to_string()));
+    }
+}
+
+/// Answer a waiting permission hook: "allow", "deny" or "pass" (let Claude Code ask).
+pub fn reply_to(pipe: String, word: &'static str) {
+    let _ = std::thread::Builder::new().name("reply".into()).stack_size(64 * 1024).spawn(move || {
+        use std::io::Write;
+        for _ in 0..10 {
+            match std::fs::OpenOptions::new().write(true).open(&pipe) {
+                Ok(mut f) => {
+                    if let Err(e) = f.write_all(word.as_bytes()) {
+                        crate::logln!("reply: write failed: {e}");
+                    }
+                    return;
+                }
+                Err(e) => crate::logln!("reply: open failed: {e}"),
+            }
+            std::thread::sleep(std::time::Duration::from_millis(60));
+        }
+    });
 }
 
 fn pipe_thread() {

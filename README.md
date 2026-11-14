@@ -48,11 +48,16 @@ On first start it asks whether to install the Claude Code hooks (see below).
   new combination; Backspace clears it, Esc cancels).
 - Blue dots (working) are steady. Amber (needs input), green (finished) and red (error)
   pulse, because those want you.
-- Clicking a toast brings that session's window to the front (toasts carry a `notch://`
-  link that runs `notch.exe --activate`).
-- Subagents running inside a session are listed under its row with what each is doing
-  (needs the hooks). They never change the session's own state: a session whose turn has
-  ended still shows as finished or waiting while a background subagent keeps working.
+- Every Claude Code session that is open is listed, working or idle, for as long as its
+  process lives. Other agents' finished sessions leave after 2 minutes.
+- Click a session to go to it. A session inside the Claude desktop app opens in the app
+  at exactly that session; a terminal session has its window raised.
+- When a session asks for permission, its row shows **Approve** and **Deny**. The toast
+  has the same two buttons. See "Approve / deny" below for when this is offered.
+- Clicking a toast takes you to that session.
+- Every subagent running inside a session is listed under its row, with its description
+  and what it is doing. They never change the session's own state: a session whose turn
+  has ended still shows as finished or waiting while a background subagent keeps working.
 - A turn that ends with a question for you shows as **needs input** (amber) with the
   question; a turn that just ends shows as **done** (green).
 - On the left or right edge the collapsed tab shows three dots and then an arrow when
@@ -80,6 +85,46 @@ notch.exe --bench [secs]        log working set and CPU every second, then exit 
 notch.exe --snapshot f.bmp      render the UI with demo data  [--expanded] [--settings] [--edge top|bottom|left|right|free] [--at 0..1]
 ```
 
+## How Claude Code sessions are tracked
+
+Three sources, most trusted first:
+
+1. **Claude Code's registry of open sessions**, `~/.claude/sessions/<pid>.json`. Claude
+   Code keeps one file per running session (terminal and desktop app) with its process
+   id, title, folder and a live status it rewrites on every change: `busy`, `idle`, or
+   `waiting` with what it is waiting for. Notch watches the folder. This decides which
+   sessions exist, their titles, and when one is waiting on you. It needs no hooks.
+2. **Hooks** (below): the current step, permission requests you can answer, the question
+   a turn ended with.
+3. **Transcripts**, `~/.claude/projects/<project>/<session>.jsonl` and
+   `<session>/subagents/agent-*.jsonl` + `.meta.json`: the current step for sessions
+   without hooks, the end of a turn (a second witness if a hook is missed), and every
+   running subagent (the meta file says what it is and whether it has finished).
+
+All three file layouts are internal to Claude Code and can change with an update. Each
+source is read defensively and independently, so if one stops making sense the others
+carry on. Checked against Claude Code 2.1.319 and 2.1.325.
+
+## Approve / deny
+
+With the hooks installed, the `PermissionRequest` hook is the one hook that waits: its
+helper holds the request open, Notch shows Approve / Deny, and your click is passed back
+to Claude Code as the hook's decision. Deny rules in your Claude settings still win over
+an Approve.
+
+- Offered for sessions hosted by the Claude desktop app or an SDK app. There the hook
+  runs alongside the host's own prompt and whichever is answered first applies, so you
+  can still answer in Claude as usual.
+- Not offered for terminal sessions by default. There it is not documented whether Claude
+  Code shows its own prompt while a hook is still deciding, so Notch lets the hook go at
+  once and Claude Code asks as usual. Set `approve_in_terminal = true` in the config to
+  try it.
+- If you answer in Claude instead, or the turn moves on, Notch releases the hook and the
+  buttons disappear.
+- Settings > "Approve / deny from the notch" switches the whole feature off (the hook
+  then returns immediately).
+- From a script: `notch.exe --decide <session-id> allow|deny`.
+
 ## Claude Code hooks
 
 Hooks are what make sessions update live (permission prompts, finished turns).
@@ -93,10 +138,12 @@ What it does to `~/.claude/settings.json`:
   is always the file as it was before Notch).
 - Appends one entry per event after your existing hooks. Nothing of yours is changed,
   removed or reordered. Events: SessionStart, UserPromptSubmit, PreToolUse, PostToolUse,
-  PostToolUseFailure, PermissionRequest, Notification, Stop, StopFailure, SubagentStop,
-  PreCompact, SessionEnd.
+  PostToolUseFailure, PermissionRequest, Notification, Stop, StopFailure, SubagentStart,
+  SubagentStop, PreCompact, SessionEnd.
 - Each entry runs `notch.exe --hook` in exec form with `"async": true`, so Claude Code
-  never waits for it. The helper reads the hook JSON from stdin, forwards it over
+  never waits for it. The one exception is PermissionRequest, which is synchronous so it
+  can return your Approve / Deny (see above); it returns at once whenever Notch is not
+  running or does not offer the buttons. The helper reads the hook JSON from stdin, forwards it over
   `\\.\pipe\notch` and exits 0. If Notch is not running it exits 0 at once.
 
 Uninstall: Settings, or `notch.exe --uninstall-hooks`. If you changed nothing else in the
@@ -282,23 +329,31 @@ Also checked:
 - Restart recovers running sessions from transcripts; titles match the Claude app's.
 - Usage percentages from the real endpoint after an expired sign-in was renewed.
 - T3 Code's real database is readable (no active runs at the time).
-- 38 unit tests (`cargo test`), including: subagent events never change the main
+- Live on this machine: both open desktop-app sessions listed with their real titles, and
+  a session's two running subagents listed under it.
+- 42 unit tests (`cargo test`), including: subagent events never change the main
   session's state, a turn ending with a question is "needs input", and a turn end read
   from the transcript rescues a missed Stop hook.
 
 Known limits on live accuracy:
 
-- A permission prompt is only visible through hooks. Sessions that were already running
-  when the hooks were installed do not have them until they are restarted; those are
-  followed from their transcripts, which show working / finished but not prompts.
-- After you approve a permission prompt nothing is reported until the tool finishes, so
-  the row stays amber for the length of that tool call.
-- Subagents are only seen through hooks.
+- Sessions that were already running when the hooks were installed do not have them until
+  they are restarted. They are still listed, with the right state, from the registry and
+  transcripts, but cannot be approved from the notch.
+- The registry says `busy` both while the main turn runs and while only a background
+  subagent runs. Notch tells these apart with the turn-end record (hook or transcript),
+  so it depends on at least one of those being seen.
+- After you approve in Claude (not in the notch), the row turns back to working when
+  Claude Code updates its status, normally at once.
 
 Not verified:
 
-- A real toast has not been clicked, and subagent lines have not been seen on a live
-  session (unit tests and demo data only).
+- A real toast has not been clicked.
+- Approve / Deny has been tested end to end against a simulated blocking hook (the hook
+  received exactly the allow / deny JSON Claude Code documents) but not yet on a real
+  permission prompt: that needs a session started after this build's hooks were installed.
+- Jump to session: Windows accepts the `claude://` link Notch opens; that the app then
+  switches to a *different* session has not been watched.
 
 - Keep Awake and Remote Control start/stop have not been pressed (they change system
   state). Only the state detection has run.

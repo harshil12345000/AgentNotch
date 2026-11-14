@@ -10,6 +10,7 @@ use crate::model::{Agent, AgentEvent};
 pub mod claude;
 pub mod claude_hooks;
 pub mod codex;
+pub mod registry;
 pub mod stubs;
 pub mod t3code;
 pub mod transcript;

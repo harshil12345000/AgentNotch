@@ -68,7 +68,7 @@ pub fn collapsed_size(e: Edge) -> (f32, f32) {
 pub const MAX_ROWS: usize = 4;
 /// On the left / right edge the panel is narrower and taller.
 pub const SIDE_PANEL_W: f32 = 300.0;
-pub const SIDE_MAX_ROWS: usize = 6;
+
 /// Dots shown on the collapsed side tab before the "more" arrow.
 pub const SIDE_DOTS: usize = 3;
 
@@ -77,10 +77,7 @@ pub fn panel_width(a: &App) -> f32 {
     if a.edge.vertical() && a.view == View::Main { SIDE_PANEL_W } else { PANEL_W }
 }
 
-/// How many session rows are visible before the list scrolls.
-pub fn max_rows(a: &App) -> usize {
-    if a.edge.vertical() { SIDE_MAX_ROWS } else { MAX_ROWS }
-}
+
 
 /// Usage numbers older than this get an "as of" line.
 const STALE_SECS: u64 = 420;
@@ -90,7 +87,7 @@ fn usage_stale(a: &App) -> Option<u64> {
     (a.usage.source == "api" && a.usage.fetched_at > 0 && age > STALE_SECS).then_some(age)
 }
 const HEADER_H: f32 = 34.0;
-const SET_ROW_H: f32 = 24.0;
+const SET_ROW_H: f32 = 23.0;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Action {
@@ -99,6 +96,9 @@ pub enum Action {
     Session(usize),
     /// The close button on a session row.
     Dismiss(usize),
+    /// Answer the permission request a session is waiting on.
+    Approve(usize),
+    Deny(usize),
     Gear,
     Back,
     Remote,
@@ -127,9 +127,10 @@ pub enum Setting {
     RcTerminal,
     RcFolder,
     Hooks,
+    Approve,
 }
 
-pub const SETTINGS: [(Setting, &str); 18] = [
+pub const SETTINGS: [(Setting, &str); 19] = [
     (Setting::Theme, "Theme"),
     (Setting::Dock, "Dock edge (drag to fine-tune)"),
     (Setting::Hotkey, "Hide / show hotkey"),
@@ -148,6 +149,7 @@ pub const SETTINGS: [(Setting, &str); 18] = [
     (Setting::RcTerminal, "Remote Control terminal"),
     (Setting::RcFolder, "Remote Control folder"),
     (Setting::Hooks, "Claude Code hooks"),
+    (Setting::Approve, "Approve / deny from the notch"),
 ];
 
 pub struct Hit {
@@ -227,25 +229,51 @@ fn usage_color(pct: f32, t: &Theme) -> Color {
     }
 }
 
-/// Height of one running-subagent line under a session row, and how many are listed.
+/// Height of one running-subagent line under a session row. Every running subagent is
+/// listed (up to a sanity cap).
 const SUB_H: f32 = 16.0;
-const MAX_SUBS: usize = 3;
+const MAX_SUBS: usize = 12;
+/// Height of the Approve / Deny strip on a row that is waiting for permission.
+const DECIDE_H: f32 = 30.0;
 
-/// Height of a session row including its subagent lines.
+/// Height of a session row including its subagent lines and decision buttons.
 fn row_height(s: &crate::model::Session) -> f32 {
     let subs = s.subs.len().min(MAX_SUBS);
-    ROW_H + if subs > 0 { subs as f32 * SUB_H + 4.0 } else { 0.0 }
+    ROW_H + if subs > 0 { subs as f32 * SUB_H + 4.0 } else { 0.0 } + if s.pending.is_some() { DECIDE_H } else { 0.0 }
+}
+
+/// How much height the session list may take before it scrolls.
+fn list_budget(a: &App) -> f32 {
+    if a.edge.vertical() { 264.0 } else { 232.0 }
+}
+
+/// Which rows are on screen: (index of the first, how many). Rows have different heights,
+/// so as many as fit the budget are shown; the first one always is.
+pub fn visible_rows(a: &App) -> (usize, usize) {
+    let n = a.store.sessions.len();
+    if n == 0 {
+        return (0, 0);
+    }
+    let first = a.scroll.min(n - 1);
+    let (mut used, mut count) = (0.0, 0);
+    for s in a.store.sessions.iter().skip(first) {
+        let h = row_height(s);
+        if count > 0 && used + h > list_budget(a) {
+            break;
+        }
+        used += h;
+        count += 1;
+    }
+    (first, count)
 }
 
 /// Height of the visible part of the session list.
 fn list_height(a: &App) -> f32 {
-    let n = a.store.sessions.len();
-    if n == 0 {
+    let (first, count) = visible_rows(a);
+    if count == 0 {
         return ROW_H;
     }
-    let max = max_rows(a);
-    let first = a.scroll.min(n.saturating_sub(max));
-    a.store.sessions.iter().skip(first).take(max).map(row_height).sum()
+    a.store.sessions.iter().skip(first).take(count).map(row_height).sum()
 }
 
 /// Height of the expanded panel for the current view.
@@ -351,7 +379,7 @@ fn collapsed_vertical(a: &App, g: &Gfx, t: &Theme, x: f32, y: f32, w: f32, h: f3
         if dy + 6.0 > bottom {
             break;
         }
-        status_dot(a, g, cx, dy, 4.0, s.state, None);
+        status_dot(a, g, cx, dy, 4.0, s, None);
         dy += 13.0;
     }
     if n > SIDE_DOTS && dy + 8.0 <= bottom {
@@ -400,7 +428,7 @@ fn collapsed(a: &App, g: &Gfx, t: &Theme, x: f32, y: f32, w: f32) {
         if dx + 6.0 > rx {
             break;
         }
-        status_dot(a, g, dx, cy, 4.0, s.state, None);
+        status_dot(a, g, dx, cy, 4.0, s, None);
         dx += 13.0;
     }
 }
@@ -426,23 +454,25 @@ impl PulseDot {
 }
 
 /// Draw one status dot at animation phase `phase` (0..1 loop).
-pub fn paint_dot(g: &Gfx, phase: f32, cx: f32, cy: f32, r: f32, s: State) {
+pub fn paint_dot(g: &Gfx, phase: f32, cx: f32, cy: f32, r: f32, s: State, pulsing: bool) {
     let c = state_color(s);
-    if s == State::Working {
-        // busy, nothing for you to do: a steady dot (and no redraw timer)
+    if !pulsing {
+        // working, or finished a while ago: a steady dot (and no redraw timer)
         g.dot(cx, cy, r, c);
         return;
     }
-    // needs input (amber), finished (green), error (red): pulse until you look
+    // needs input (amber), just finished (green), just failed (red): pulse
     let wave = 0.5 - 0.5 * (phase * std::f32::consts::TAU).cos(); // 0..1..0
     g.ring(cx, cy, r + 0.5 + 2.5 * wave, c.a(0.6 * (1.0 - wave)), 1.0);
     g.dot(cx, cy, r, c.a(0.75 + 0.25 * wave));
 }
 
 /// One status dot in a full frame; pulsing ones are recorded for the cheap pulse frames.
-fn status_dot(a: &App, g: &Gfx, cx: f32, cy: f32, r: f32, s: State, under: Option<Color>) {
-    paint_dot(g, a.phase, cx, cy, r, s);
-    if s != State::Working && g.alpha.get() > 0.99 {
+fn status_dot(a: &App, g: &Gfx, cx: f32, cy: f32, r: f32, sess: &crate::model::Session, under: Option<Color>) {
+    let pulsing = sess.pulsing(now_unix());
+    let s = sess.state;
+    paint_dot(g, a.phase, cx, cy, r, s, pulsing);
+    if pulsing && g.alpha.get() > 0.99 {
         a.pulses.borrow_mut().push(PulseDot { cx, cy, r, state: s, under });
     }
 }
@@ -457,7 +487,7 @@ pub fn draw_pulses(a: &App, dots: &[PulseDot]) {
         if let Some(c) = d.under {
             g.fill_rr(x0 - 1.0, y0 - 1.0, x1 - x0 + 2.0, y1 - y0 + 2.0, 0.0, c);
         }
-        paint_dot(g, a.phase, d.cx, d.cy, d.r, d.state);
+        paint_dot(g, a.phase, d.cx, d.cy, d.r, d.state, true);
         g.unclip();
     }
 }
@@ -469,7 +499,8 @@ fn expanded(a: &App, g: &Gfx, t: &Theme, x: f32, y: f32, w: f32, hits: &mut Vec<
     let active = a.store.active_count();
     let title = match (n, active) {
         (0, _) => "Notch".to_string(),
-        (_, 0) => format!("{n} finished"),
+        (1, 0) => "1 session, idle".to_string(),
+        (_, 0) => format!("{n} sessions, idle"),
         (_, 1) => "1 active session".to_string(),
         _ => format!("{active} active sessions"),
     };
@@ -489,13 +520,12 @@ fn expanded(a: &App, g: &Gfx, t: &Theme, x: f32, y: f32, w: f32, hits: &mut Vec<
         g.text("No agents running right now.", Font::Body, x + 16.0, cy, w - 32.0, ROW_H, Align::Left, t.dim);
         cy += ROW_H;
     } else {
-        let max_rows = max_rows(a);
-        let first = a.scroll.min(n.saturating_sub(max_rows));
-        for (i, s) in a.store.sessions.iter().enumerate().skip(first).take(max_rows) {
+        let (first, shown) = visible_rows(a);
+        for (i, s) in a.store.sessions.iter().enumerate().skip(first).take(shown) {
             let act = Action::Session(i);
             let close = Action::Dismiss(i);
             let selected = a.selected.as_deref() == Some(s.id.as_str());
-            let hot = hov(&act) || hov(&close);
+            let hot = hov(&act) || hov(&close) || hov(&Action::Approve(i)) || hov(&Action::Deny(i));
             let rh = row_height(s);
             if hot || selected {
                 g.fill_rr(x + 6.0, cy + 1.0, w - 12.0, rh - 2.0, 12.0, if selected { t.chip } else { t.hover });
@@ -525,7 +555,7 @@ fn expanded(a: &App, g: &Gfx, t: &Theme, x: f32, y: f32, w: f32, hits: &mut Vec<
             let sw = g.measure(st, Font::Small);
             g.text(st, Font::Small, x + w - 94.0, cy + 20.0, 80.0, 16.0, Align::Right, state_color(s.state));
             let under = if selected { Some(t.chip) } else if hot { Some(t.hover) } else { None };
-            status_dot(a, g, x + w - 14.0 - sw - 8.0, cy + 28.5, 3.0, s.state, under);
+            status_dot(a, g, x + w - 14.0 - sw - 8.0, cy + 28.5, 3.0, s, under);
             g.text(s.name(), Font::Bold, x + 48.0, cy + 3.0, w - 48.0 - 100.0, 18.0, Align::Left, t.text);
             g.text(&s.step, Font::Small, x + 48.0, cy + 20.0, w - 48.0 - 108.0, 16.0, Align::Left, t.dim);
             // subagents running inside this session
@@ -546,13 +576,24 @@ fn expanded(a: &App, g: &Gfx, t: &Theme, x: f32, y: f32, w: f32, hits: &mut Vec<
             }
             hits.push(Hit { x: x + 6.0, y: cy, w: w - 12.0, h: rh, action: act });
             hits.push(Hit { x: x + w - 36.0, y: cy, w: 26.0, h: 24.0, action: close });
+            if s.pending.is_some() {
+                // answer the permission request right here
+                let by = cy + rh - DECIDE_H + 2.0;
+                for (label, action, color, bx, bw) in [("Approve", Action::Approve(i), GREEN, x + 48.0, 80.0), ("Deny", Action::Deny(i), RED, x + 136.0, 62.0)] {
+                    let over = hov(&action);
+                    g.fill_rr(bx, by, bw, 22.0, 11.0, hex(color).a(if over { 0.42 } else { 0.24 }));
+                    g.stroke_rr(bx + 0.5, by + 0.5, bw - 1.0, 21.0, 10.5, hex(color).a(if over { 1.0 } else { 0.65 }), 1.0);
+                    g.text(label, Font::Bold, bx, by - 0.5, bw, 22.0, Align::Center, t.text);
+                    hits.push(Hit { x: bx, y: by, w: bw, h: 22.0, action });
+                }
+            }
             cy += rh;
         }
-        if n > max_rows {
+        if shown < n {
             // scroll hint
-            let frac = first as f32 / (n - max_rows) as f32;
+            let frac = first as f32 / (n - 1).max(1) as f32;
             let track_h = list_height(a) - 12.0;
-            let thumb = track_h * max_rows as f32 / n as f32;
+            let thumb = (track_h * shown as f32 / n as f32).max(14.0);
             g.fill_rr(x + w - 5.0, y + HEADER_H + 6.0 + (track_h - thumb) * frac, 2.5, thumb, 1.2, t.track);
         }
     }

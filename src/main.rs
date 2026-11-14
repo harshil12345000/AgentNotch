@@ -42,6 +42,7 @@ const HELP: &str = "Notch - a tiny island for AI coding agent sessions
             [--wsl <distro>]        ... act on a running WSL distro
             [--codex]               ... act on Codex (~/.codex/hooks.json) instead of Claude Code
   notch.exe --status                print what Notch detects (lid action, keep-awake, Remote Control, hooks)
+  notch.exe --decide <session> allow|deny   answer a pending permission request
   notch.exe --quit                  ask the running island to exit (restores power settings)
   notch.exe --hook                  (used by the hooks) forward stdin JSON to the island
   notch.exe --snapshot <file.bmp>   render the UI with demo data to a bitmap [--expanded|--settings]
@@ -58,13 +59,23 @@ fn main() {
         return;
     }
 
-    // A toast was clicked: tell the running notch which session to bring forward.
-    if let Some(url) = after("--activate") {
-        if let Some(id) = toast::parse_link(&url) {
+    // A toast (or one of its buttons) was clicked: tell the running notch.
+    // `--decide <session> allow|deny` does the same from a script.
+    let link = after("--activate").and_then(|url| toast::parse_link(&url)).or_else(|| {
+        let sid = after("--decide")?;
+        let verb = args.iter().find(|a| *a == "allow" || *a == "deny")?.clone();
+        Some((verb, sid))
+    });
+    if has("--activate") || has("--decide") {
+        if let Some((verb, id)) = link {
             winutil::allow_running_instance_foreground();
+            let p = match verb.as_str() {
+                "focus" => serde_json::json!({ "focus": id }),
+                v => serde_json::json!({ "decide": id, "allow": v == "allow" }),
+            };
             if let Some(mut pipe) = ipc::connect() {
                 use std::io::Write;
-                let _ = pipe.write_all(serde_json::json!({"v": 1, "agent": "notch", "p": {"focus": id}}).to_string().as_bytes());
+                let _ = pipe.write_all(serde_json::json!({"v": 1, "agent": "notch", "p": p}).to_string().as_bytes());
             }
         }
         return;
@@ -93,6 +104,7 @@ fn main() {
         println!("held awake by an app: {}", power::system_held_awake());
         println!("keep awake by Notch: {}", power::ours());
         println!("remote control:      started by Notch = {}, running elsewhere = {}", rc::our_pid().is_some(), rc::external_running());
+        println!("claude sessions:     {}", adapters::registry::status_line());
         println!("t3 code:             {}", adapters::t3code::status());
         let codex_hooks = adapters::codex::codex_home().join("hooks.json");
         println!("codex hooks:         {}", if adapters::claude_hooks::installed(&codex_hooks) { "installed" } else { "not installed" });
@@ -142,6 +154,7 @@ fn main() {
         snapshot: after("--snapshot"),
         settings: has("--settings"),
         no_prompt: has("--no-prompt"),
+        hold_all: has("--hold-all"),
         edge: after("--edge"),
         at: after("--at").and_then(|s| s.parse().ok()),
     };
