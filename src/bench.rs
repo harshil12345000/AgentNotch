@@ -50,6 +50,13 @@ pub fn sample() -> Sample {
 }
 
 static FRAMES: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+static DRAW_MICROS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Record the drawing part of a pulse frame (the rest is presenting it).
+pub fn draw(d: std::time::Duration) {
+    DRAW_MICROS.fetch_add(d.as_micros() as u64, std::sync::atomic::Ordering::Relaxed);
+}
+
 static FRAME_MICROS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// Record one rendered frame (cheap; always on).
@@ -102,15 +109,17 @@ impl Bench {
         self.pws_max = self.pws_max.max(s.private_ws);
         let frames = FRAMES.swap(0, std::sync::atomic::Ordering::Relaxed);
         let micros = FRAME_MICROS.swap(0, std::sync::atomic::Ordering::Relaxed);
+        let draw = DRAW_MICROS.swap(0, std::sync::atomic::Ordering::Relaxed);
         self.out(&format!(
-            "t={:>3}s  working_set={:>6.2} MB  private_ws={:>6.2} MB  cpu={:>5.2}%  cpu1={:>5.2}%  frames={:>3}  render={:>5.1} ms",
+            "t={:>3}s  working_set={:>6.2} MB  private_ws={:>6.2} MB  cpu={:>5.2}%  cpu1={:>5.2}%  frames={:>3}  render={:>5.1} ms (pulse draw {:>4.1} ms)",
             self.n,
             s.working_set,
             s.private_ws,
             one / self.cores,
             one,
             frames,
-            micros as f64 / 1000.0
+            micros as f64 / 1000.0,
+            draw as f64 / 1000.0
         ));
         if self.n >= self.secs {
             let avg = self.cpu_sum / self.n as f64;

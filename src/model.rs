@@ -138,6 +138,8 @@ pub struct Store {
     pub sessions: Vec<Session>,
     /// Sessions the user dismissed. They stay hidden until they do something new.
     dismissed: std::collections::HashSet<String>,
+    /// Titles (and Remote Control markers) seen before the session itself showed up.
+    early: std::collections::HashMap<String, (String, bool)>,
     /// Most recent project dir seen on a live event (used by Remote Control).
     pub last_dir: String,
 }
@@ -157,14 +159,27 @@ impl Store {
         let idx = match idx {
             Some(i) => i,
             None => {
-                if matches!(ev.kind, EventKind::SessionEnded | EventKind::Info) {
+                if ev.kind == EventKind::Info {
+                    // keep it for when the session appears, so it never shows a folder name first
+                    let e = self.early.entry(ev.session_id.clone()).or_default();
+                    if let Some(t) = ev.title.as_ref().filter(|t| !t.is_empty()) {
+                        e.0 = crate::util::clip(t, 60);
+                    }
+                    e.1 |= ev.remote;
+                    if self.early.len() > 64 {
+                        self.early.clear();
+                    }
                     return None;
                 }
+                if ev.kind == EventKind::SessionEnded {
+                    return None;
+                }
+                let (early_title, early_remote) = self.early.remove(&ev.session_id).unwrap_or_default();
                 self.sessions.push(Session {
                     id: ev.session_id.clone(),
                     agent: ev.agent,
                     dir: ev.project_dir.clone(),
-                    title: String::new(),
+                    title: early_title,
                     step: String::new(),
                     state: State::Working,
                     pids: Vec::new(),
@@ -172,7 +187,7 @@ impl Store {
                     last_event: ev.at,
                     finished: None,
                     live: false,
-                    remote: false,
+                    remote: early_remote,
                 });
                 self.sessions.len() - 1
             }
@@ -385,6 +400,18 @@ mod tests {
         assert_eq!(st.apply(soft), None);
         assert_eq!(st.sessions[0].state, State::Done);
         assert_eq!(st.sessions[0].name(), "demo");
+    }
+    #[test]
+    fn early_title_is_used_when_the_session_appears() {
+        let mut st = Store::default();
+        let mut info = ev(EventKind::Info);
+        info.title = Some("Real title".into());
+        info.remote = true;
+        st.apply(info);
+        assert!(st.sessions.is_empty());
+        st.apply(ev(EventKind::Working { step: "x".into() }));
+        assert_eq!(st.sessions[0].name(), "Real title");
+        assert!(st.sessions[0].remote);
     }
     #[test]
     fn dismissed_sessions_return_only_on_new_activity() {

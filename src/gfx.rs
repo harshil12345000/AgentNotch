@@ -55,6 +55,10 @@ pub struct Gfx {
     pub scale: f32,
     /// Global opacity multiplier for everything drawn.
     pub alpha: std::cell::Cell<f32>,
+    /// The rectangle this frame is limited to, if any.
+    partial: std::cell::Cell<Option<[f32; 4]>>,
+    /// A clip was pushed for this frame and must be popped before it ends.
+    clipped: std::cell::Cell<bool>,
 }
 
 fn rect(x: f32, y: f32, w: f32, h: f32) -> D2D_RECT_F {
@@ -107,7 +111,7 @@ impl Gfx {
             rt.BindDC(memdc, &RECT { left: 0, top: 0, right: w, bottom: h })?;
             let brush = rt.CreateSolidColorBrush(&D2D1_COLOR_F { r: 1.0, g: 1.0, b: 1.0, a: 1.0 }, None)?;
             let logos = crate::logos::ALL.iter().filter_map(|d| build_logo(&factory, d)).collect();
-            let g = Gfx { _factory: factory, dw, rt, brush, fonts, logos, memdc, dib, oldbmp, bits, w, h, scale, alpha: std::cell::Cell::new(1.0) };
+            let g = Gfx { _factory: factory, dw, rt, brush, fonts, logos, memdc, dib, oldbmp, bits, w, h, scale, alpha: std::cell::Cell::new(1.0), partial: std::cell::Cell::new(None), clipped: std::cell::Cell::new(false) };
             g.rt.SetDpi(96.0 * scale, 96.0 * scale);
             g.rt.SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
             Ok(g)
@@ -134,29 +138,70 @@ impl Gfx {
         }
     }
 
-    pub fn begin(&self) {
+    /// Start a frame. With `only`, drawing (and the clear) is limited to that rectangle
+    /// (DIPs): everything outside keeps last frame's pixels and costs nothing to rasterize.
+    pub fn begin(&self, only: Option<[f32; 4]>) {
         unsafe {
             self.rt.BeginDraw();
+            if let Some([x0, y0, x1, y1]) = only {
+                self.rt.PushAxisAlignedClip(&D2D_RECT_F { left: x0, top: y0, right: x1, bottom: y1 }, D2D1_ANTIALIAS_MODE_ALIASED);
+            }
             self.rt.Clear(Some(&D2D1_COLOR_F { r: 0.0, g: 0.0, b: 0.0, a: 0.0 }));
         }
+        self.partial.set(only);
+        self.clipped.set(only.is_some());
+        self.alpha.set(1.0);
+    }
+
+    /// Start a frame that paints over what is already in the bitmap (nothing is cleared).
+    /// Only `dirty` (DIPs) is sent to the compositor when the frame is presented.
+    pub fn begin_over(&self, dirty: [f32; 4]) {
+        unsafe {
+            self.rt.BeginDraw();
+        }
+        self.partial.set(Some(dirty));
+        self.clipped.set(false);
         self.alpha.set(1.0);
     }
 
     /// Finish drawing and push the bitmap to the layered window at screen position (x, y).
     pub fn present(&self, hwnd: HWND, x: i32, y: i32) {
         unsafe {
+            let partial = self.partial.take();
+            if self.clipped.replace(false) {
+                self.rt.PopAxisAlignedClip();
+            }
             let _ = self.rt.EndDraw(None, None);
             let dst = POINT { x, y };
             let size = SIZE { cx: self.w, cy: self.h };
             let src = POINT { x: 0, y: 0 };
             let blend = BLENDFUNCTION { BlendOp: AC_SRC_OVER as u8, BlendFlags: 0, SourceConstantAlpha: 255, AlphaFormat: AC_SRC_ALPHA as u8 };
-            let _ = UpdateLayeredWindow(hwnd, None, Some(&dst), Some(&size), Some(self.memdc), Some(&src), COLORREF(0), Some(&blend), ULW_ALPHA);
+            // tell the compositor which pixels changed, so it does not re-upload the rest
+            let s = self.scale;
+            let dirty = partial.map(|[x0, y0, x1, y1]| RECT { left: ((x0 * s).floor() as i32).max(0), top: ((y0 * s).floor() as i32).max(0), right: ((x1 * s).ceil() as i32).min(self.w), bottom: ((y1 * s).ceil() as i32).min(self.h) });
+            let info = UPDATELAYEREDWINDOWINFO {
+                cbSize: std::mem::size_of::<UPDATELAYEREDWINDOWINFO>() as u32,
+                hdcDst: HDC::default(),
+                pptDst: &dst,
+                psize: &size,
+                hdcSrc: self.memdc,
+                pptSrc: &src,
+                crKey: COLORREF(0),
+                pblend: &blend,
+                dwFlags: ULW_ALPHA,
+                prcDirty: dirty.as_ref().map(|r| r as *const RECT).unwrap_or(std::ptr::null()),
+            };
+            let _ = UpdateLayeredWindowIndirect(hwnd, &info);
         }
     }
 
     /// Finish drawing without presenting (snapshot mode).
     pub fn end(&self) {
         unsafe {
+            self.partial.set(None);
+            if self.clipped.replace(false) {
+                self.rt.PopAxisAlignedClip();
+            }
             let _ = self.rt.EndDraw(None, None);
         }
     }

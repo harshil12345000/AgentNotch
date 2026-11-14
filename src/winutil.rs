@@ -184,6 +184,13 @@ pub fn attach_console() {
     }
 }
 
+/// Release pages that are no longer needed back to the system.
+pub fn trim_working_set() {
+    unsafe {
+        let _ = SetProcessWorkingSetSize(GetCurrentProcess(), usize::MAX, usize::MAX);
+    }
+}
+
 /// Seconds since the last keyboard or mouse input.
 pub fn idle_secs() -> u64 {
     use windows::Win32::System::SystemInformation::GetTickCount;

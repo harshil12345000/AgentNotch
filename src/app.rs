@@ -34,6 +34,7 @@ const T_USAGE: usize = 7;
 const T_RC: usize = 8;
 const T_EXPIRE: usize = 9;
 const T_FSCHECK: usize = 10;
+const T_TRIM: usize = 11;
 
 /// How close (DIPs) the notch's centre must come to a screen edge to attach to it.
 const SNAP_DIST: f32 = 56.0;
@@ -169,6 +170,11 @@ pub struct App {
     shown: bool,
     animating: bool,
     dirty: bool,
+    /// Only the pulsing dots need a new frame.
+    pulse_dirty: bool,
+    /// The pulsing dots of the last full frame.
+    pub pulses: std::cell::RefCell<Vec<ui::PulseDot>>,
+    trimmed: bool,
     last_frame: Instant,
     t0: Instant,
     pub phase: f32,
@@ -398,6 +404,36 @@ impl App {
         self.dirty = true;
     }
 
+    /// Repaint just the pulsing dots over the frame already on screen: a few hundred
+    /// pixels, no text layout, and only that area goes to the compositor.
+    fn render_pulse(&mut self) {
+        self.pulse_dirty = false;
+        if !self.shown || self.animating {
+            return;
+        }
+        if self.theme.bg.3 < 1.0 {
+            // translucent panel (glass on): the dots cannot be repainted in place
+            self.render();
+            return;
+        }
+        let dots = self.pulses.borrow().clone();
+        if dots.is_empty() {
+            return;
+        }
+        let t_start = Instant::now();
+        self.phase = (self.t0.elapsed().as_secs_f32() / 1.6).fract();
+        let mut dirty = [f32::MAX, f32::MAX, f32::MIN, f32::MIN];
+        for d in &dots {
+            let b = d.bounds();
+            dirty = [dirty[0].min(b[0]), dirty[1].min(b[1]), dirty[2].max(b[2]), dirty[3].max(b[3])];
+        }
+        self.gfx.begin_over(dirty);
+        ui::draw_pulses(self, &dots);
+        crate::bench::draw(t_start.elapsed());
+        self.gfx.present(self.hwnd, self.win.0, self.win.1);
+        crate::bench::frame(t_start.elapsed());
+    }
+
     fn step(&mut self) {
         let now = Instant::now();
         let dt = (now - self.last_frame).as_secs_f32().clamp(0.001, 0.034);
@@ -418,6 +454,7 @@ impl App {
 
     fn render(&mut self) {
         self.dirty = false;
+        self.pulse_dirty = false;
         if !self.shown {
             return;
         }
@@ -434,7 +471,7 @@ impl App {
     fn draw_and_present(&mut self) {
         let t_start = Instant::now();
         let mut hits = std::mem::take(&mut self.hits);
-        self.gfx.begin();
+        self.gfx.begin(None);
         ui::draw(self, &mut hits);
         self.hits = hits;
         if self.hwnd.is_invalid() {
@@ -490,8 +527,9 @@ impl App {
 
     /// Timers only run while there is something to animate or count.
     fn update_timers(&mut self) {
-        let active = self.store.active_count() > 0;
-        self.timer(T_PULSE, (self.shown && active).then_some(100));
+        // only sessions that want a human (needs input, finished, error) pulse
+        let attention = self.store.sessions.iter().any(|s| s.state != crate::model::State::Working);
+        self.timer(T_PULSE, (self.shown && attention).then_some(125));
         self.timer(T_SECOND, (self.shown && self.expanded && self.view == View::Main).then_some(1000));
         self.timer(T_EXPIRE, (!self.store.sessions.is_empty()).then_some(15_000));
     }
@@ -1170,7 +1208,7 @@ impl App {
 
     fn on_timer(&mut self, id: usize) {
         match id {
-            T_PULSE => self.invalidate(),
+            T_PULSE => self.pulse_dirty = true,
             T_SECOND => self.invalidate(),
             T_HOVER_OPEN => {
                 self.timer(T_HOVER_OPEN, None);
@@ -1201,6 +1239,15 @@ impl App {
             T_FSCHECK => {
                 self.timer(T_FSCHECK, None);
                 self.check_fullscreen();
+            }
+            T_TRIM => {
+                // Startup touches a lot of memory once (fonts, COM, the first usage scan).
+                // Hand those pages back; what is really needed faults back in.
+                self.timer(T_TRIM, None);
+                if !self.trimmed {
+                    self.trimmed = true;
+                    winutil::trim_working_set();
+                }
             }
             T_BENCH => {
                 if let Some(b) = self.bench.as_mut() {
@@ -1414,6 +1461,9 @@ pub fn run(opts: Opts) -> i32 {
             shown: false,
             animating: false,
             dirty: false,
+            pulse_dirty: false,
+            pulses: std::cell::RefCell::new(Vec::new()),
+            trimmed: false,
             last_frame: Instant::now(),
             t0: Instant::now(),
             phase: 0.0,
@@ -1527,6 +1577,7 @@ pub fn run(opts: Opts) -> i32 {
         if !a.quiet && !opts.no_prompt {
             let _ = PostMessageW(Some(hwnd), WM_FIRSTRUN, WPARAM(0), LPARAM(0));
         }
+        a.timer(T_TRIM, Some(12_000));
         logln!("notch started (scale {:.2}, {} monitor(s))", a.scale, a.mons.len());
 
         let mut msg = MSG::default();
@@ -1560,6 +1611,8 @@ pub fn run(opts: Opts) -> i32 {
                 }
                 if a.dirty && !a.animating {
                     a.render();
+                } else if a.pulse_dirty && !a.animating {
+                    a.render_pulse();
                 }
             }
         }

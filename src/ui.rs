@@ -226,6 +226,7 @@ pub fn panel_radius(open: f32, h: f32) -> f32 {
 
 pub fn draw(a: &App, hits: &mut Vec<Hit>) {
     hits.clear();
+    a.pulses.borrow_mut().clear();
     let g = &a.gfx;
     let t = &a.theme;
     let (min_w, min_h) = collapsed_size(a.edge);
@@ -308,7 +309,7 @@ fn collapsed_vertical(a: &App, g: &Gfx, t: &Theme, x: f32, y: f32, w: f32, h: f3
         if dy + 6.0 > bottom {
             break;
         }
-        status_dot(a, g, cx, dy, 4.0, s.state);
+        status_dot(a, g, cx, dy, 4.0, s.state, None);
         dy += 13.0;
     }
 }
@@ -353,25 +354,65 @@ fn collapsed(a: &App, g: &Gfx, t: &Theme, x: f32, y: f32, w: f32) {
         if dx + 6.0 > rx {
             break;
         }
-        status_dot(a, g, dx, cy, 4.0, s.state);
+        status_dot(a, g, dx, cy, 4.0, s.state, None);
         dx += 13.0;
     }
 }
 
-/// One status dot, animated by `a.phase` (0..1 loop).
-fn status_dot(a: &App, g: &Gfx, cx: f32, cy: f32, r: f32, s: State) {
+/// A dot that pulses, remembered so later frames can repaint it alone.
+#[derive(Clone, Copy)]
+pub struct PulseDot {
+    pub cx: f32,
+    pub cy: f32,
+    pub r: f32,
+    pub state: State,
+    /// Translucent fill that lies between the panel background and the dot (a hovered or
+    /// selected row), if any.
+    pub under: Option<Color>,
+}
+
+impl PulseDot {
+    /// The area a pulse can touch.
+    pub fn bounds(&self) -> [f32; 4] {
+        let m = self.r + 4.5;
+        [self.cx - m, self.cy - m, self.cx + m, self.cy + m]
+    }
+}
+
+/// Draw one status dot at animation phase `phase` (0..1 loop).
+pub fn paint_dot(g: &Gfx, phase: f32, cx: f32, cy: f32, r: f32, s: State) {
     let c = state_color(s);
-    let wave = 0.5 - 0.5 * (a.phase * std::f32::consts::TAU).cos(); // 0..1..0
-    match s {
-        State::Working => {
-            g.dot(cx, cy, r, c.a(0.6 + 0.4 * wave));
-            g.ring(cx, cy, r + 1.0 + 2.0 * wave, c.a(0.35 * (1.0 - wave)), 1.0);
+    if s == State::Working {
+        // busy, nothing for you to do: a steady dot (and no redraw timer)
+        g.dot(cx, cy, r, c);
+        return;
+    }
+    // needs input (amber), finished (green), error (red): pulse until you look
+    let wave = 0.5 - 0.5 * (phase * std::f32::consts::TAU).cos(); // 0..1..0
+    g.ring(cx, cy, r + 0.5 + 2.5 * wave, c.a(0.6 * (1.0 - wave)), 1.0);
+    g.dot(cx, cy, r, c.a(0.75 + 0.25 * wave));
+}
+
+/// One status dot in a full frame; pulsing ones are recorded for the cheap pulse frames.
+fn status_dot(a: &App, g: &Gfx, cx: f32, cy: f32, r: f32, s: State, under: Option<Color>) {
+    paint_dot(g, a.phase, cx, cy, r, s);
+    if s != State::Working && g.alpha.get() > 0.99 {
+        a.pulses.borrow_mut().push(PulseDot { cx, cy, r, state: s, under });
+    }
+}
+
+/// Repaint only the pulsing dots over the frame that is already on screen.
+pub fn draw_pulses(a: &App, dots: &[PulseDot]) {
+    let g = &a.gfx;
+    for d in dots {
+        let [x0, y0, x1, y1] = d.bounds();
+        g.clip(x0, y0, x1 - x0, y1 - y0);
+        g.fill_rr(x0 - 1.0, y0 - 1.0, x1 - x0 + 2.0, y1 - y0 + 2.0, 0.0, a.theme.bg);
+        if let Some(c) = d.under {
+            g.fill_rr(x0 - 1.0, y0 - 1.0, x1 - x0 + 2.0, y1 - y0 + 2.0, 0.0, c);
         }
-        State::NeedsInput => {
-            g.ring(cx, cy, r + 0.5 + 2.5 * wave, c.a(0.55 * (1.0 - wave)), 1.0);
-            g.dot(cx, cy, r, c);
-        }
-        _ => g.dot(cx, cy, r, c),
+        paint_dot(g, a.phase, d.cx, d.cy, d.r, d.state);
+        g.unclip();
     }
 }
 
@@ -435,7 +476,8 @@ fn expanded(a: &App, g: &Gfx, t: &Theme, x: f32, y: f32, w: f32, hits: &mut Vec<
             };
             let sw = g.measure(st, Font::Small);
             g.text(st, Font::Small, x + w - 94.0, cy + 20.0, 80.0, 16.0, Align::Right, state_color(s.state));
-            status_dot(a, g, x + w - 14.0 - sw - 8.0, cy + 28.5, 3.0, s.state);
+            let under = if selected { Some(t.chip) } else if hot { Some(t.hover) } else { None };
+            status_dot(a, g, x + w - 14.0 - sw - 8.0, cy + 28.5, 3.0, s.state, under);
             g.text(s.name(), Font::Bold, x + 48.0, cy + 3.0, w - 48.0 - 100.0, 18.0, Align::Left, t.text);
             g.text(&s.step, Font::Small, x + 48.0, cy + 20.0, w - 48.0 - 108.0, 16.0, Align::Left, t.dim);
             hits.push(Hit { x: x + 6.0, y: cy, w: w - 12.0, h: ROW_H, action: act });
