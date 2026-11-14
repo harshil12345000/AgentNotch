@@ -22,12 +22,14 @@ not overwrite.
 
 On first start it asks whether to install the Claude Code hooks (see below).
 
-- **Hover** the notch to open it; move away to close it. **Click** it to pin it open.
+- **Hover** the notch to open it; move away to close it. Clicking the header closes it
+  at once. (With "Expand on hover" off in Settings, a click opens it and the next click
+  closes it.)
 - **Drag** it to any screen edge: top, bottom, left or right, anywhere along the edge.
   It attaches when its centre comes within 56 px of an edge. On the bottom edge it sits
   on top of the taskbar and opens upward. Dropped away from the edges it floats as a pill.
   The position is remembered per monitor setup.
-- **Ctrl+/** hides and shows it. Change the keys in Settings (click the row, press the
+- **Ctrl+\\** hides and shows it. Change the keys in Settings (click the row, press the
   new combination; Backspace clears it, Esc cancels).
 - Blue dots (working) are steady. Amber (needs input), green (finished) and red (error)
   pulse, because those want you.

@@ -36,6 +36,7 @@ const T_EXPIRE: usize = 9;
 const T_FSCHECK: usize = 10;
 const T_TRIM: usize = 11;
 const T_COALESCE: usize = 12;
+const T_HOVERWATCH: usize = 13;
 
 /// How close (DIPs) the notch's centre must come to a screen edge to attach to it.
 const SNAP_DIST: f32 = 56.0;
@@ -166,6 +167,14 @@ pub struct App {
     drag: Option<Drag>,
     tracking: bool,
     suppress_hover: bool,
+    /// The short delay before a hover opens the panel is running.
+    open_pending: bool,
+    /// Consecutive hover checks that found the cursor away from the open panel.
+    away_ticks: u8,
+    /// An event opened the panel: keep it open until then even though nobody hovers it.
+    hold_until: Option<Instant>,
+    /// Opened from the tray menu: stays open until the cursor has visited it once.
+    release_pin_on_enter: bool,
     user_hidden: bool,
     fs_hidden: bool,
     shown: bool,
@@ -537,6 +546,7 @@ impl App {
         let attention = self.store.sessions.iter().any(|s| s.state != crate::model::State::Working);
         self.timer(T_PULSE, (self.shown && attention).then_some(125));
         self.timer(T_SECOND, (self.shown && self.expanded && self.view == View::Main).then_some(1000));
+        self.timer(T_HOVERWATCH, (self.shown && self.expanded).then_some(150));
         self.timer(T_EXPIRE, (!self.store.sessions.is_empty()).then_some(15_000));
     }
 
@@ -550,11 +560,14 @@ impl App {
             self.pinned = false;
             self.hover = None;
             self.view = View::Main;
+            self.hold_until = None;
+            self.release_pin_on_enter = false;
         } else {
             self.on_expand();
         }
+        self.away_ticks = 0;
+        self.open_pending = false;
         self.timer(T_HOVER_OPEN, None);
-        self.timer(T_HOVER_CLOSE, None);
         self.update_visibility();
         self.update_timers();
         self.kick();
@@ -599,28 +612,64 @@ impl App {
                 let _ = TrackMouseEvent(&mut tme);
             }
         }
-        self.timer(T_HOVER_CLOSE, None);
-        self.timer(T_AUTOCLOSE, None);
         let h = ui::hit_test(&self.hits, x as f32 / self.scale, y as f32 / self.scale);
         if h != self.hover {
             self.hover = h;
             self.invalidate();
         }
-        if !self.expanded && self.cfg.hover_expand && !self.suppress_hover && self.hover.is_some() {
-            self.timer(T_HOVER_OPEN, Some(140));
+        // Open after a very short pause (so a cursor just passing by does not open it).
+        // The pause starts once and is not restarted by further movement.
+        if !self.expanded && self.cfg.hover_expand && !self.suppress_hover && self.hover.is_some() && !self.open_pending {
+            self.open_pending = true;
+            self.timer(T_HOVER_OPEN, Some(45));
+        }
+    }
+
+    /// Is the cursor over the panel right now (current or target shape, plus `margin` DIPs)?
+    /// Asked directly instead of trusting enter / leave messages, which can go missing when
+    /// the panel changes shape under a still cursor.
+    fn cursor_over(&self, margin: f32) -> bool {
+        let c = Self::cursor();
+        let (cx, cy) = ((c.x - self.win.0) as f32 / self.scale, (c.y - self.win.1) as f32 / self.scale);
+        let inside = |x: f32, y: f32, w: f32, h: f32| cx >= x - margin && cx < x + w + margin && cy >= y - margin && cy < y + h + margin;
+        let r = &self.rect;
+        inside(r[0].x, r[1].x, r[2].x, r[3].x) || inside(r[0].target, r[1].target, r[2].target, r[3].target)
+    }
+
+    /// Runs a few times a second while the panel is open and closes it once the cursor has
+    /// been away for a moment.
+    fn hover_watch(&mut self) {
+        if !self.expanded || self.drag.is_some() {
+            return;
+        }
+        if self.cursor_over(8.0) {
+            self.away_ticks = 0;
+            self.hold_until = None; // you are looking at it: normal hover rules from here
+            if self.release_pin_on_enter {
+                self.release_pin_on_enter = false;
+                self.pinned = false;
+            }
+            return;
+        }
+        let held = self.hold_until.map(|t| Instant::now() < t).unwrap_or(false);
+        if self.pinned || self.capturing_hotkey || held {
+            return;
+        }
+        self.away_ticks += 1;
+        if self.away_ticks >= 2 {
+            self.set_expanded(false);
         }
     }
 
     fn on_mouse_leave(&mut self) {
         self.tracking = false;
         self.suppress_hover = false;
+        self.open_pending = false;
         self.timer(T_HOVER_OPEN, None);
         if self.hover.take().is_some() {
             self.invalidate();
         }
-        if self.expanded && !self.pinned {
-            self.timer(T_HOVER_CLOSE, Some(450));
-        }
+        // closing is decided by hover_watch, from the real cursor position
     }
 
     fn on_down(&mut self, x: i32, y: i32) {
@@ -646,21 +695,18 @@ impl App {
             if d.moved {
                 self.finish_drag();
             } else if self.expanded {
-                if self.pinned {
-                    self.suppress_hover = true;
-                    self.set_expanded(false);
-                } else {
-                    self.pinned = true;
-                }
+                // a click on the header closes it; it will not reopen until the cursor leaves
+                self.suppress_hover = true;
+                self.set_expanded(false);
             } else {
                 self.set_expanded(true);
-                self.pinned = true;
+                // with hover-to-open switched off, a click opens it until the next click
+                self.pinned = !self.cfg.hover_expand;
             }
             return;
         }
         let h = ui::hit_test(&self.hits, x as f32 / self.scale, y as f32 / self.scale);
         if h.is_some() && h == self.pressed {
-            self.pinned = true;
             self.act(h.unwrap());
         }
         self.pressed = None;
@@ -1217,8 +1263,8 @@ impl App {
         if !self.expanded {
             self.set_expanded(true);
         }
-        if !self.tracking {
-            self.timer(T_AUTOCLOSE, Some(4500));
+        if !self.cursor_over(8.0) {
+            self.hold_until = Some(Instant::now() + std::time::Duration::from_millis(4500));
         }
     }
 
@@ -1253,16 +1299,12 @@ impl App {
             T_SECOND => self.invalidate(),
             T_HOVER_OPEN => {
                 self.timer(T_HOVER_OPEN, None);
-                if self.hover.is_some() && self.drag.is_none() {
+                self.open_pending = false;
+                if !self.expanded && self.drag.is_none() && self.cursor_over(2.0) {
                     self.set_expanded(true);
                 }
             }
-            T_HOVER_CLOSE | T_AUTOCLOSE => {
-                self.timer(id, None);
-                if !self.pinned && !self.tracking {
-                    self.set_expanded(false);
-                }
-            }
+            T_HOVERWATCH => self.hover_watch(),
             T_USAGE => self.refresh_usage(false),
             T_RC => self.refresh_rc(false),
             T_EXPIRE => {
@@ -1323,7 +1365,9 @@ impl App {
                 self.view = View::Settings;
                 self.hooks_installed = self.query_hooks_installed();
                 self.set_expanded(true);
+                // opened from the tray, far from the cursor: stay open until visited
                 self.pinned = true;
+                self.release_pin_on_enter = true;
                 self.kick();
             }
             tray::Cmd::Autostart => winutil::set_autostart(!winutil::autostart_enabled()),
@@ -1498,6 +1542,10 @@ pub fn run(opts: Opts) -> i32 {
             drag: None,
             tracking: false,
             suppress_hover: false,
+            open_pending: false,
+            away_ticks: 0,
+            hold_until: None,
+            release_pin_on_enter: false,
             user_hidden: false,
             fs_hidden: false,
             shown: false,
@@ -1525,7 +1573,8 @@ pub fn run(opts: Opts) -> i32 {
             capturing_hotkey: false,
             hotkey_ok: true,
             locked: false,
-            demo: opts.demo || snapshot,
+            // demo, snapshot and isolated test instances never call the usage endpoint
+            demo: opts.demo || snapshot || !crate::util::instance_suffix().is_empty(),
             hooks_installed: false,
             quiet: opts.bench.is_some() || opts.demo,
             glass: false,

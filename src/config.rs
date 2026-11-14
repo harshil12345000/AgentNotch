@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 pub struct Config {
     /// "system" | "dark" | "light"
     pub theme: String,
-    /// Global hotkey that hides / shows the notch, e.g. "Ctrl+/". Empty = none.
+    /// Global hotkey that hides / shows the notch, e.g. "Ctrl+\\". Empty = none.
     pub hotkey: String,
     /// Blur what is behind the island (glass). Off = solid panel.
     pub glass: bool,
@@ -97,7 +97,7 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             theme: "dark".into(),
-            hotkey: "Ctrl+/".into(),
+            hotkey: "Ctrl+\\".into(),
             glass: false,
             hover_expand: true,
             hide_when_idle: false,

@@ -1,4 +1,4 @@
-//! Global hide/show hotkey ("Ctrl+/" by default), stored in the config as text.
+//! Global hide/show hotkey ("Ctrl+\\" by default), stored in the config as text.
 use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::Input::KeyboardAndMouse::*;
 
@@ -109,6 +109,7 @@ mod tests {
     #[test]
     fn parses() {
         assert_eq!(parse("Ctrl+/"), Some((MOD_CONTROL, 0xBF)));
+        assert_eq!(parse(&crate::config::Config::default().hotkey), Some((MOD_CONTROL, 0xDC)));
         assert_eq!(parse("ctrl+shift+k"), Some((MOD_CONTROL | MOD_SHIFT, 0x4B)));
         assert_eq!(parse("Alt+F4"), Some((MOD_ALT, 0x73)));
         assert_eq!(parse("Ctrl"), None);
