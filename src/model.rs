@@ -47,6 +47,26 @@ pub enum EventKind {
     Info,
 }
 
+/// News about a subagent working inside a session.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SubEvent {
+    pub id: String,
+    /// The subagent's type, e.g. "general-purpose" or "Explore".
+    pub kind: String,
+    /// What it is doing now, when known.
+    pub step: Option<String>,
+    pub ended: bool,
+}
+
+/// A subagent currently running inside a session.
+#[derive(Clone, Debug)]
+pub struct Sub {
+    pub id: String,
+    pub kind: String,
+    pub step: String,
+    pub last: u64,
+}
+
 /// What every adapter emits.
 #[derive(Clone, Debug)]
 pub struct AgentEvent {
@@ -65,6 +85,11 @@ pub struct AgentEvent {
     pub at: u64,
     /// The session is being followed through Remote Control.
     pub remote: bool,
+    /// Subagent news. Never changes the session's own state.
+    pub sub: Option<SubEvent>,
+    /// Read from the session's own record of a turn ending. Trusted even when hooks are
+    /// live for the session, so a missed Stop hook cannot leave it "working".
+    pub turn_end: bool,
     /// Another adapter's name for the same work (T3 Code names the Claude or Codex
     /// session it drives). Sessions with an id found in this text are folded into this one.
     pub alias: Option<String>,
@@ -83,6 +108,8 @@ impl AgentEvent {
             soft: false,
             at: now_unix(),
             remote: false,
+            sub: None,
+            turn_end: false,
             alias: None,
         }
     }
@@ -112,6 +139,8 @@ pub struct Session {
     pub live: bool,
     /// Followed through Remote Control (seen in its transcript).
     pub remote: bool,
+    /// Subagents running inside this session right now.
+    pub subs: Vec<Sub>,
 }
 
 impl Session {
@@ -206,6 +235,7 @@ impl Store {
                     finished: None,
                     live: false,
                     remote: early_remote,
+                    subs: Vec::new(),
                 });
                 self.sessions.len() - 1
             }
@@ -223,6 +253,24 @@ impl Store {
         if !ev.pids.is_empty() {
             s.pids = ev.pids.clone();
         }
+        if let Some(sub) = &ev.sub {
+            if sub.ended {
+                s.subs.retain(|x| x.id != sub.id);
+            } else {
+                match s.subs.iter_mut().find(|x| x.id == sub.id) {
+                    Some(x) => {
+                        if let Some(step) = &sub.step {
+                            x.step = step.clone();
+                        }
+                        if !sub.kind.is_empty() {
+                            x.kind = sub.kind.clone();
+                        }
+                        x.last = ev.at;
+                    }
+                    None => s.subs.push(Sub { id: sub.id.clone(), kind: sub.kind.clone(), step: sub.step.clone().unwrap_or_default(), last: ev.at }),
+                }
+            }
+        }
         if ev.remote {
             s.remote = true;
         }
@@ -231,7 +279,10 @@ impl Store {
         }
         // Once hooks are flowing for a session, file backfill must not fight them.
         if !ev.live && s.live {
-            return None;
+            // ...except the end of a turn, when nothing live has happened since
+            if !(ev.turn_end && ev.at >= s.last_event) {
+                return None;
+            }
         }
         if ev.live {
             s.live = true;
@@ -293,6 +344,7 @@ impl Store {
                 }
                 s.step = "session ended".into();
                 s.pids.clear();
+                s.subs.clear();
                 // Ended sessions leave quickly: keep them one minute at most.
                 s.finished = Some(s.finished.unwrap_or(ev.at).min(ev.at));
                 s.last_event = 0;
@@ -326,6 +378,10 @@ impl Store {
         let before = self.sessions.len();
         let mut changed = false;
         for s in self.sessions.iter_mut() {
+            // a subagent that has been silent for 15 minutes is gone (its stop event was missed)
+            let n = s.subs.len();
+            s.subs.retain(|x| now.saturating_sub(x.last) < 900);
+            changed |= s.subs.len() != n;
             // The agent process is gone but no SessionEnd arrived (killed terminal).
             if s.active() && now.saturating_sub(s.last_event) > 20 {
                 if let Some(&pid) = s.pids.first() {
@@ -477,6 +533,39 @@ mod tests {
         b.live = false;
         assert_eq!(st.apply(b), None);
         assert_eq!(st.sessions[0].state, State::Working);
+    }
+    #[test]
+    fn transcript_turn_end_rescues_a_missed_stop_hook() {
+        let mut st = Store::default();
+        st.apply(ev(EventKind::Working { step: "x".into() }));
+        let mut end = ev(EventKind::Done);
+        end.live = false;
+        end.turn_end = true;
+        assert!(matches!(st.apply(end.clone()), Some(Alert::Done { .. })));
+        assert_eq!(st.sessions[0].state, State::Done);
+        // an old turn end must not override newer live work
+        st.apply(ev(EventKind::Working { step: "next turn".into() }));
+        end.at -= 30;
+        assert_eq!(st.apply(end), None);
+        assert_eq!(st.sessions[0].state, State::Working);
+    }
+    #[test]
+    fn subagents_are_tracked_without_touching_state() {
+        let mut st = Store::default();
+        st.apply(ev(EventKind::Working { step: "x".into() }));
+        st.apply(ev(EventKind::Done));
+        let sub = |step: Option<&str>, ended: bool| {
+            let mut e = ev(EventKind::Info);
+            e.sub = Some(SubEvent { id: "a1".into(), kind: "Explore".into(), step: step.map(|s| s.to_string()), ended });
+            e
+        };
+        st.apply(sub(None, false));
+        st.apply(sub(Some("Grep fn main"), false));
+        assert_eq!(st.sessions[0].subs.len(), 1);
+        assert_eq!(st.sessions[0].subs[0].step, "Grep fn main");
+        assert_eq!(st.sessions[0].state, State::Done); // the main session is still finished
+        st.apply(sub(None, true));
+        assert!(st.sessions[0].subs.is_empty());
     }
     #[test]
     fn expiry() {

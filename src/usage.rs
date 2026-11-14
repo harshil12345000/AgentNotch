@@ -34,6 +34,9 @@ pub fn refresh(cfg: UsageCfg) {
                         u.note = notes.join("; ");
                     }
                     u.fetched_at = now_unix();
+                    if u.source == "api" {
+                        save_last(&u);
+                    }
                     post(UiMsg::Usage(u));
                     return;
                 }
@@ -45,6 +48,45 @@ pub fn refresh(cfg: UsageCfg) {
         }
         post(UiMsg::Usage(Usage { note: notes.join("; "), fetched_at: now_unix(), ..Default::default() }));
     });
+}
+
+// ------------------------------------------------------------------ last good numbers
+
+fn last_path() -> std::path::PathBuf {
+    crate::util::data_dir().join("usage-last.tsv")
+}
+
+/// Remember real numbers from the endpoint, so a restart can show them at once instead of
+/// asking the (rate-limited) endpoint again.
+fn save_last(u: &Usage) {
+    let line = |name: &str, w: &Option<UsageWindow>| match w {
+        Some(w) => format!("{name}\t{}\t{}\n", w.pct.map(|p| p.to_string()).unwrap_or_default(), w.resets_at.map(|r| r.to_string()).unwrap_or_default()),
+        None => String::new(),
+    };
+    let text = format!("at\t{}\n{}{}", u.fetched_at, line("five", &u.five_hour), line("week", &u.week));
+    let _ = std::fs::write(last_path(), text);
+}
+
+/// The numbers saved by `save_last`, with the time they were fetched.
+pub fn load_last() -> Option<Usage> {
+    let text = std::fs::read_to_string(last_path()).ok()?;
+    let mut u = Usage { source: "api", ..Default::default() };
+    for l in text.lines() {
+        let mut p = l.split('\t');
+        match (p.next()?, p.next(), p.next()) {
+            ("at", Some(t), _) => u.fetched_at = t.parse().ok()?,
+            (name @ ("five" | "week"), Some(pct), reset) => {
+                let w = UsageWindow { pct: pct.parse().ok(), tokens: None, resets_at: reset.and_then(|r| r.parse().ok()) };
+                if name == "five" {
+                    u.five_hour = Some(w);
+                } else {
+                    u.week = Some(w);
+                }
+            }
+            _ => {}
+        }
+    }
+    (u.fetched_at > 0 && (u.five_hour.is_some() || u.week.is_some())).then_some(u)
 }
 
 // ------------------------------------------------------------------ source A

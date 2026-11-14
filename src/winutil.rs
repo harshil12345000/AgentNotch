@@ -219,6 +219,22 @@ pub fn pick_folder(owner: HWND) -> Option<String> {
     }
 }
 
+/// Let the running notch take the foreground. Called by the short-lived helper that a
+/// toast click starts (which Windows trusts to do so), so the session's window can be
+/// raised.
+pub fn allow_running_instance_foreground() {
+    let title = wide(&window_title());
+    unsafe {
+        if let Ok(h) = FindWindowW(w!("NotchIsland"), PCWSTR(title.as_ptr())) {
+            let mut pid = 0u32;
+            GetWindowThreadProcessId(h, Some(&mut pid));
+            if pid != 0 {
+                let _ = AllowSetForegroundWindow(pid);
+            }
+        }
+    }
+}
+
 pub fn window_title() -> String {
     format!("Notch{}", crate::util::instance_suffix())
 }

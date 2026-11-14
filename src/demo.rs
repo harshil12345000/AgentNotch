@@ -25,6 +25,12 @@ pub fn fill(a: &mut App) {
     for e in evs {
         a.store.apply(e);
     }
+    // two subagents under the first session
+    for (id, kind, step) in [("s1", "Explore", "Grep \"checkout\" in src"), ("s2", "general-purpose", "Bash: npx tsc --noEmit")] {
+        let mut e = AgentEvent::new(Agent::Claude, "d1", "", EventKind::Info);
+        e.sub = Some(crate::model::SubEvent { id: id.into(), kind: kind.into(), step: Some(step.into()), ended: false });
+        a.store.apply(e);
+    }
     a.usage = Usage {
         five_hour: Some(UsageWindow { pct: Some(72.0), tokens: None, resets_at: Some(now + 2 * 3600 + 13 * 60) }),
         week: Some(UsageWindow { pct: Some(34.0), tokens: None, resets_at: Some(now + 3 * 86400 + 5 * 3600) }),

@@ -9,6 +9,7 @@ mod gfx;
 mod glass;
 mod hook_client;
 mod hotkey;
+mod install;
 mod ipc;
 mod log;
 mod logos;
@@ -30,6 +31,8 @@ mod wsl;
 const HELP: &str = "Notch - a tiny island for AI coding agent sessions
 
   notch.exe                         start the island
+  notch.exe --install               copy to %LOCALAPPDATA%\\Programs\\Notch, add Desktop and Start Menu shortcuts, start it
+  notch.exe --uninstall             remove the shortcuts and the Start with Windows entry
   notch.exe --bench [secs]          log working set and CPU every second (default 60), then exit
             [--expanded] [--demo]   ... with the panel open / with five demo sessions
   notch.exe --install-hooks         add Notch hooks to ~/.claude/settings.json (backup first)
@@ -52,6 +55,30 @@ fn main() {
     // Hook client first: it must be fast and silent.
     if has("--hook") || has("--codex-notify") {
         hook_client::run(&args);
+        return;
+    }
+
+    // A toast was clicked: tell the running notch which session to bring forward.
+    if let Some(url) = after("--activate") {
+        if let Some(id) = toast::parse_link(&url) {
+            winutil::allow_running_instance_foreground();
+            if let Some(mut pipe) = ipc::connect() {
+                use std::io::Write;
+                let _ = pipe.write_all(serde_json::json!({"v": 1, "agent": "notch", "p": {"focus": id}}).to_string().as_bytes());
+            }
+        }
+        return;
+    }
+
+    if has("--install") || has("--uninstall") {
+        winutil::attach_console();
+        match if has("--install") { install::install() } else { install::uninstall() } {
+            Ok(m) => println!("{m}"),
+            Err(e) => {
+                println!("error: {e}");
+                std::process::exit(1);
+            }
+        }
         return;
     }
 

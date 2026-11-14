@@ -30,4 +30,9 @@ fn main() {
         println!("cargo:rustc-link-arg-bins=/DELAYLOAD:{dll}");
     }
     println!("cargo:rustc-link-arg-bins=delayimp.lib");
+
+    // icon and version resource
+    println!("cargo:rerun-if-changed=assets/notch.rc");
+    println!("cargo:rerun-if-changed=assets/notch.ico");
+    let _ = embed_resource::compile("assets/notch.rc", embed_resource::NONE);
 }

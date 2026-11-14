@@ -25,6 +25,13 @@ fn handle(bytes: &[u8], need_token: Option<&str>) {
         }
     }
     let agent = v.get("agent").and_then(|a| a.as_str()).unwrap_or("claude");
+    if agent == "notch" {
+        // from `notch.exe --activate`: a toast was clicked
+        if let Some(sid) = v.get("p").and_then(|p| p.get("focus")).and_then(|s| s.as_str()) {
+            post(UiMsg::Focus(sid.to_string()));
+        }
+        return;
+    }
     let pids: Vec<u32> = v.get("pids").and_then(|p| p.as_array()).map(|a| a.iter().filter_map(|x| x.as_u64().map(|n| n as u32)).collect()).unwrap_or_default();
     let wsl = v.get("wsl").and_then(|w| w.as_str()).unwrap_or("");
     let Some(payload) = v.get("p") else { return };

@@ -14,7 +14,7 @@ pub const CANVAS_W: f32 = PANEL_W + PAD * 2.0;
 pub const CANVAS_H: f32 = 484.0 + PAD * 2.0;
 /// Collapsed size when attached to the left or right edge (a vertical tab).
 pub const VPILL_W: f32 = 34.0;
-pub const VPILL_H: f32 = 124.0;
+pub const VPILL_H: f32 = 142.0;
 /// Radius of the concave fillets where a docked notch meets the screen edge.
 pub const EAR: f32 = 8.0;
 pub const ROW_H: f32 = 40.0;
@@ -66,6 +66,29 @@ pub fn collapsed_size(e: Edge) -> (f32, f32) {
     if e.vertical() { (VPILL_W, VPILL_H) } else { (PILL_W, PILL_H) }
 }
 pub const MAX_ROWS: usize = 4;
+/// On the left / right edge the panel is narrower and taller.
+pub const SIDE_PANEL_W: f32 = 300.0;
+pub const SIDE_MAX_ROWS: usize = 6;
+/// Dots shown on the collapsed side tab before the "more" arrow.
+pub const SIDE_DOTS: usize = 3;
+
+/// Width of the open panel: narrower on a side edge (settings always use the full width).
+pub fn panel_width(a: &App) -> f32 {
+    if a.edge.vertical() && a.view == View::Main { SIDE_PANEL_W } else { PANEL_W }
+}
+
+/// How many session rows are visible before the list scrolls.
+pub fn max_rows(a: &App) -> usize {
+    if a.edge.vertical() { SIDE_MAX_ROWS } else { MAX_ROWS }
+}
+
+/// Usage numbers older than this get an "as of" line.
+const STALE_SECS: u64 = 420;
+
+fn usage_stale(a: &App) -> Option<u64> {
+    let age = now_unix().saturating_sub(a.usage.fetched_at);
+    (a.usage.source == "api" && a.usage.fetched_at > 0 && age > STALE_SECS).then_some(age)
+}
 const HEADER_H: f32 = 34.0;
 const SET_ROW_H: f32 = 24.0;
 
@@ -204,16 +227,35 @@ fn usage_color(pct: f32, t: &Theme) -> Color {
     }
 }
 
-fn rows(a: &App) -> usize {
-    a.store.sessions.len().clamp(1, MAX_ROWS)
+/// Height of one running-subagent line under a session row, and how many are listed.
+const SUB_H: f32 = 16.0;
+const MAX_SUBS: usize = 3;
+
+/// Height of a session row including its subagent lines.
+fn row_height(s: &crate::model::Session) -> f32 {
+    let subs = s.subs.len().min(MAX_SUBS);
+    ROW_H + if subs > 0 { subs as f32 * SUB_H + 4.0 } else { 0.0 }
+}
+
+/// Height of the visible part of the session list.
+fn list_height(a: &App) -> f32 {
+    let n = a.store.sessions.len();
+    if n == 0 {
+        return ROW_H;
+    }
+    let max = max_rows(a);
+    let first = a.scroll.min(n.saturating_sub(max));
+    a.store.sessions.iter().skip(first).take(max).map(row_height).sum()
 }
 
 /// Height of the expanded panel for the current view.
 pub fn content_height(a: &App) -> f32 {
     match a.view {
         View::Main => {
-            let note = if a.awake { 30.0 } else { 0.0 };
-            HEADER_H + rows(a) as f32 * ROW_H + 8.0 + 48.0 + 8.0 + 36.0 + note + 12.0
+            let stale = if usage_stale(a).is_some() { 14.0 } else { 0.0 };
+            // side layout stacks the two toggles
+            let toggles = if panel_width(a) < 340.0 { 36.0 * 2.0 + 6.0 } else { 36.0 };
+            HEADER_H + list_height(a) + 8.0 + 48.0 + stale + 8.0 + toggles + 12.0
         }
         View::Settings => HEADER_H + SETTINGS.len() as f32 * SET_ROW_H + 10.0,
     }
@@ -305,12 +347,16 @@ fn collapsed_vertical(a: &App, g: &Gfx, t: &Theme, x: f32, y: f32, w: f32, h: f3
     }
     g.text(&a.store.active_count().to_string(), Font::Bold, sx, top + 8.0, VPILL_W, 18.0, Align::Center, t.text);
     let mut dy = top + 38.0;
-    for s in a.store.sessions.iter() {
+    for s in a.store.sessions.iter().take(SIDE_DOTS) {
         if dy + 6.0 > bottom {
             break;
         }
         status_dot(a, g, cx, dy, 4.0, s.state, None);
         dy += 13.0;
+    }
+    if n > SIDE_DOTS && dy + 8.0 <= bottom {
+        // more sessions than dots: an arrow says the list continues (hover to open and scroll)
+        g.text("\u{E70D}", Font::Icon, sx, dy - 7.0, VPILL_W, 14.0, Align::Center, t.dim);
     }
 }
 
@@ -443,14 +489,16 @@ fn expanded(a: &App, g: &Gfx, t: &Theme, x: f32, y: f32, w: f32, hits: &mut Vec<
         g.text("No agents running right now.", Font::Body, x + 16.0, cy, w - 32.0, ROW_H, Align::Left, t.dim);
         cy += ROW_H;
     } else {
-        let first = a.scroll.min(n.saturating_sub(MAX_ROWS));
-        for (i, s) in a.store.sessions.iter().enumerate().skip(first).take(MAX_ROWS) {
+        let max_rows = max_rows(a);
+        let first = a.scroll.min(n.saturating_sub(max_rows));
+        for (i, s) in a.store.sessions.iter().enumerate().skip(first).take(max_rows) {
             let act = Action::Session(i);
             let close = Action::Dismiss(i);
             let selected = a.selected.as_deref() == Some(s.id.as_str());
             let hot = hov(&act) || hov(&close);
+            let rh = row_height(s);
             if hot || selected {
-                g.fill_rr(x + 6.0, cy + 1.0, w - 12.0, ROW_H - 2.0, 12.0, if selected { t.chip } else { t.hover });
+                g.fill_rr(x + 6.0, cy + 1.0, w - 12.0, rh - 2.0, 12.0, if selected { t.chip } else { t.hover });
             }
             g.fill_rr(x + 14.0, cy + 8.0, 24.0, 24.0, 8.0, t.chip);
             g.stroke_rr(x + 14.5, cy + 8.5, 23.0, 23.0, 7.5, t.line, 1.0);
@@ -480,15 +528,31 @@ fn expanded(a: &App, g: &Gfx, t: &Theme, x: f32, y: f32, w: f32, hits: &mut Vec<
             status_dot(a, g, x + w - 14.0 - sw - 8.0, cy + 28.5, 3.0, s.state, under);
             g.text(s.name(), Font::Bold, x + 48.0, cy + 3.0, w - 48.0 - 100.0, 18.0, Align::Left, t.text);
             g.text(&s.step, Font::Small, x + 48.0, cy + 20.0, w - 48.0 - 108.0, 16.0, Align::Left, t.dim);
-            hits.push(Hit { x: x + 6.0, y: cy, w: w - 12.0, h: ROW_H, action: act });
+            // subagents running inside this session
+            for (k, sub) in s.subs.iter().take(MAX_SUBS).enumerate() {
+                let sy = cy + ROW_H - 2.0 + k as f32 * SUB_H;
+                // elbow connector from the session's icon down to the line
+                g.line(x + 26.0, sy - 1.0, x + 26.0, sy + 8.0, t.track, 1.0);
+                g.line(x + 26.0, sy + 8.0, x + 36.0, sy + 8.0, t.track, 1.0);
+                let hidden = s.subs.len() - MAX_SUBS.min(s.subs.len());
+                let text = if k == MAX_SUBS - 1 && hidden > 0 {
+                    format!("+ {} more subagents", hidden + 1)
+                } else {
+                    let kind = if sub.kind.is_empty() { "subagent" } else { sub.kind.as_str() };
+                    if sub.step.is_empty() { kind.to_string() } else { format!("{kind} · {}", sub.step) }
+                };
+                g.dot(x + 44.0, sy + 8.0, 2.5, hex(BLUE));
+                g.text(&text, Font::Small, x + 53.0, sy, w - 53.0 - 16.0, SUB_H, Align::Left, t.dim);
+            }
+            hits.push(Hit { x: x + 6.0, y: cy, w: w - 12.0, h: rh, action: act });
             hits.push(Hit { x: x + w - 36.0, y: cy, w: 26.0, h: 24.0, action: close });
-            cy += ROW_H;
+            cy += rh;
         }
-        if n > MAX_ROWS {
+        if n > max_rows {
             // scroll hint
-            let frac = first as f32 / (n - MAX_ROWS) as f32;
-            let track_h = MAX_ROWS as f32 * ROW_H - 12.0;
-            let thumb = track_h * MAX_ROWS as f32 / n as f32;
+            let frac = first as f32 / (n - max_rows) as f32;
+            let track_h = list_height(a) - 12.0;
+            let thumb = track_h * max_rows as f32 / n as f32;
             g.fill_rr(x + w - 5.0, y + HEADER_H + 6.0 + (track_h - thumb) * frac, 2.5, thumb, 1.2, t.track);
         }
     }
@@ -513,21 +577,25 @@ fn expanded(a: &App, g: &Gfx, t: &Theme, x: f32, y: f32, w: f32, hits: &mut Vec<
         usage_row(g, t, x, cy + 4.0, w, "5h", a.usage.five_hour.as_ref(), a.usage.source);
         usage_row(g, t, x, cy + 24.0, w, "Week", a.usage.week.as_ref(), a.usage.source);
     }
-    cy += 48.0 + 8.0;
+    cy += 48.0;
+    if let Some(age) = usage_stale(a) {
+        let why = if a.usage.note.contains("rate limited") { " · endpoint is rate limiting" } else { "" };
+        g.text(&format!("as of {} ago{why} · click to refresh", fmt_dur(age)), Font::Small, x + 16.0, cy - 2.0, w - 32.0, 14.0, Align::Left, t.dim);
+        cy += 14.0;
+    }
+    cy += 8.0;
 
     // toggles
-    let bw = (w - 16.0 * 2.0 - 8.0) / 2.0;
+    let narrow = w < 340.0;
+    let bw = if narrow { w - 32.0 } else { (w - 16.0 * 2.0 - 8.0) / 2.0 };
     let (rc_txt, rc_on) = a.rc_label();
     toggle(g, t, x + 16.0, cy, bw, "\u{E8EA}", "Remote Control", rc_txt, rc_on, hex(BLUE), hov(&Action::Remote));
     hits.push(Hit { x: x + 16.0, y: cy, w: bw, h: 36.0, action: Action::Remote });
-    let ax = x + 16.0 + bw + 8.0;
-    toggle(g, t, ax, cy, bw, "\u{E706}", "Keep Awake", a.awake_label(), a.awake, hex(AMBER), hov(&Action::Awake));
-    hits.push(Hit { x: ax, y: cy, w: bw, h: 36.0, action: Action::Awake });
-    cy += 36.0;
-    if a.awake {
-        g.text("The laptop's own screen still turns off when the lid is closed.", Font::Small, x + 16.0, cy + 3.0, w - 32.0, 14.0, Align::Left, t.dim);
-        g.text("The PC and any external monitor keep running.", Font::Small, x + 16.0, cy + 16.0, w - 32.0, 14.0, Align::Left, t.dim);
-    }
+    // side by side, or stacked on the narrow side layout
+    let (ax, ay) = if narrow { (x + 16.0, cy + 42.0) } else { (x + 16.0 + bw + 8.0, cy) };
+    toggle(g, t, ax, ay, bw, "\u{E706}", "Keep Awake", a.awake_label(), a.awake, hex(AMBER), hov(&Action::Awake));
+    hits.push(Hit { x: ax, y: ay, w: bw, h: 36.0, action: Action::Awake });
+    cy = ay + 36.0;
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -537,8 +605,9 @@ fn usage_row(g: &Gfx, t: &Theme, x: f32, y: f32, w: f32, label: &str, u: Option<
         g.text("n/a", Font::Small, x + 54.0, y, 100.0, 18.0, Align::Left, t.dim);
         return;
     };
+    let narrow = w < 340.0;
     let bar_x = x + 54.0;
-    let bar_w = 104.0;
+    let bar_w = if narrow { 64.0 } else { 104.0 };
     let mut tx = bar_x;
     if let Some(p) = u.pct {
         g.fill_rr(bar_x, y + 7.0, bar_w, 4.0, 2.0, t.track);
@@ -553,7 +622,13 @@ fn usage_row(g: &Gfx, t: &Theme, x: f32, y: f32, w: f32, label: &str, u: Option<
     }
     if let Some(r) = u.resets_at {
         let now = now_unix();
-        let s = if r > now { format!("resets in {}", fmt_dur(r - now)) } else { "resetting".to_string() };
+        let s = if r <= now {
+            "resetting".to_string()
+        } else if narrow {
+            format!("in {}", fmt_dur(r - now))
+        } else {
+            format!("resets in {}", fmt_dur(r - now))
+        };
         g.text(&s, Font::Small, tx, y, x + w - 16.0 - tx, 18.0, Align::Right, t.dim);
     }
 }

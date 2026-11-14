@@ -47,6 +47,7 @@ struct Line {
     timestamp: Option<String>,
     is_sidechain: Option<bool>,
     custom_title: Option<String>,
+    subtype: Option<String>,
     message: Option<Msg>,
 }
 #[derive(Deserialize)]
@@ -55,15 +56,36 @@ struct Msg {
     stop_reason: Option<String>,
 }
 
-/// Turn one transcript line into an event. `prefix` converts a WSL path to a Windows one.
-pub fn parse_line(line: &str, wsl: &str, info_only: bool) -> Option<AgentEvent> {
+/// How much of a transcript drives a session's state.
+#[derive(Clone, Copy, PartialEq)]
+pub enum Mode {
+    /// No hooks for this session: every state line counts.
+    Full,
+    /// Hooks are live: the transcript only supplies titles, the Remote Control marker and
+    /// the end of a turn (a second witness, in case the Stop hook is missed).
+    Assist,
+}
+
+fn interrupted(content: &Option<Value>) -> bool {
+    let starts = |t: &str| t.trim_start().starts_with("[Request interrupted");
+    match content {
+        Some(Value::String(t)) => starts(t),
+        Some(Value::Array(a)) => a.iter().any(|b| b.get("type").and_then(|t| t.as_str()) == Some("text") && b.get("text").and_then(|t| t.as_str()).map(starts).unwrap_or(false)),
+        _ => false,
+    }
+}
+
+/// Turn one transcript line into an event. `wsl` is the distro when the file is inside WSL.
+pub fn parse_line(line: &str, wsl: &str, mode: Mode) -> Option<AgentEvent> {
     // cheap pre-filter: most lines (request records, attachments, snapshots) are not state
     let info = line.contains("\"type\":\"custom-title\"") || line.contains("\"type\":\"bridge-session\"");
-    if !info && (info_only || !(line.contains("\"type\":\"assistant\"") || line.contains("\"type\":\"user\""))) {
+    let state = line.contains("\"type\":\"assistant\"") || line.contains("\"type\":\"user\"") || line.contains("\"stop_hook_summary\"");
+    if !info && !state {
         return None;
     }
     let l: Line = serde_json::from_str(line).ok()?;
     let sid = l.session_id?;
+    let mut turn_end = false;
     let kind = match l.kind.as_deref()? {
         k @ ("custom-title" | "bridge-session") => {
             let mut ev = AgentEvent::new(Agent::Claude, &sid, "", EventKind::Info);
@@ -73,33 +95,55 @@ pub fn parse_line(line: &str, wsl: &str, info_only: bool) -> Option<AgentEvent> 
             ev.live = false;
             return Some(ev);
         }
-        _ if info_only => return None,
         _ if l.is_sidechain == Some(true) => return None, // subagent chatter
+        // written when the Stop hooks have run: the turn is over
+        "system" if l.subtype.as_deref() == Some("stop_hook_summary") => {
+            turn_end = true;
+            super::claude::turn_end(&sid)
+        }
         "assistant" => {
             let m = l.message?;
             let tool = m.content.as_ref().and_then(|c| c.as_array()).and_then(|a| a.iter().rev().find(|b| b.get("type").and_then(|t| t.as_str()) == Some("tool_use")));
             match (tool, m.stop_reason.as_deref()) {
+                (Some(_), _) if mode == Mode::Assist => return None,
                 (Some(t), _) => {
                     let name = t.get("name").and_then(|n| n.as_str()).unwrap_or("");
+                    let input = t.get("input").unwrap_or(&Value::Null);
+                    super::claude::note_tool(&sid, name, input);
                     match name {
                         "AskUserQuestion" => EventKind::NeedsInput { reason: "Has a question for you".into() },
                         "ExitPlanMode" => EventKind::NeedsInput { reason: "Plan ready for review".into() },
-                        _ => EventKind::Working { step: tool_step(name, t.get("input").unwrap_or(&Value::Null)) },
+                        _ => EventKind::Working { step: tool_step(name, input) },
                     }
                 }
-                (None, Some("end_turn")) | (None, Some("stop_sequence")) => EventKind::Done,
+                (None, Some("end_turn")) | (None, Some("stop_sequence")) => {
+                    turn_end = true;
+                    super::claude::turn_end(&sid)
+                }
+                _ if mode == Mode::Assist => return None,
                 (None, Some("refusal")) | (None, Some("max_tokens")) => EventKind::Error { message: clip(m.stop_reason.as_deref().unwrap_or(""), 40) },
                 _ => EventKind::Working { step: String::new() },
             }
         }
         "user" => {
             let m = l.message?;
-            let is_prompt = match &m.content {
-                Some(Value::String(_)) => true,
-                Some(Value::Array(a)) => !a.iter().any(|b| b.get("type").and_then(|t| t.as_str()) == Some("tool_result")),
-                _ => false,
-            };
-            EventKind::Working { step: if is_prompt { "Thinking…".into() } else { String::new() } }
+            if interrupted(&m.content) {
+                // Esc: the turn stopped without a normal ending
+                turn_end = true;
+                EventKind::Done
+            } else if mode == Mode::Assist {
+                return None;
+            } else {
+                let is_prompt = match &m.content {
+                    Some(Value::String(_)) => true,
+                    Some(Value::Array(a)) => !a.iter().any(|b| b.get("type").and_then(|t| t.as_str()) == Some("tool_result")),
+                    _ => false,
+                };
+                if is_prompt {
+                    super::claude::clear_ask(&sid);
+                }
+                EventKind::Working { step: if is_prompt { "Thinking…".into() } else { String::new() } }
+            }
         }
         _ => return None,
     };
@@ -109,6 +153,7 @@ pub fn parse_line(line: &str, wsl: &str, info_only: bool) -> Option<AgentEvent> 
     }
     let mut ev = AgentEvent::new(Agent::Claude, &sid, &dir, kind);
     ev.live = false;
+    ev.turn_end = turn_end;
     if let Some(t) = l.timestamp.as_deref().and_then(parse_rfc3339) {
         ev.at = t;
     }
@@ -136,10 +181,10 @@ fn session_id_of(p: &Path) -> String {
 fn read_file(tailer: &mut Tailer, path: &Path, wsl: &str, out: &mut Vec<AgentEvent>) {
     // sessions with live hooks only need titles and the Remote Control marker from the file
     let sid = session_id_of(path);
-    let info_only = is_live(&sid);
+    let mode = if is_live(&sid) { Mode::Assist } else { Mode::Full };
     let first_sight = !tailer.knows(path);
     for line in tailer.read_new(path, FIRST_TAIL, MAX_LINE) {
-        if let Some(ev) = parse_line(&line, wsl, info_only) {
+        if let Some(ev) = parse_line(&line, wsl, mode) {
             out.push(ev);
         }
     }
@@ -224,20 +269,40 @@ mod tests {
     #[test]
     fn parses_transcript_lines() {
         let tool = r#"{"type":"assistant","sessionId":"s","cwd":"C:\\p","timestamp":"2026-11-14T10:00:00.000Z","isSidechain":false,"message":{"role":"assistant","stop_reason":"tool_use","content":[{"type":"text","text":"hi"},{"type":"tool_use","name":"Bash","input":{"command":"ls"}}]}}"#;
-        let e = parse_line(tool, "", false).unwrap();
+        let e = parse_line(tool, "", Mode::Full).unwrap();
         assert_eq!(e.kind, EventKind::Working { step: "Bash: ls".into() });
-        assert!(!e.live);
+        assert!(!e.live && !e.turn_end);
         assert_eq!(e.at, 1_794_650_400);
+        assert!(parse_line(tool, "", Mode::Assist).is_none());
         let end = r#"{"type":"assistant","sessionId":"s","cwd":"C:\\p","message":{"stop_reason":"end_turn","content":[{"type":"text","text":"done"}]}}"#;
-        assert_eq!(parse_line(end, "", false).unwrap().kind, EventKind::Done);
-        assert!(parse_line(end, "", true).is_none());
+        for mode in [Mode::Full, Mode::Assist] {
+            let e = parse_line(end, "", mode).unwrap();
+            assert_eq!(e.kind, EventKind::Done);
+            assert!(e.turn_end);
+        }
+        let hook = r#"{"type":"system","subtype":"stop_hook_summary","sessionId":"s","cwd":"C:\\p","stopReason":""}"#;
+        assert!(parse_line(hook, "", Mode::Assist).unwrap().turn_end);
+        let esc = r#"{"type":"user","sessionId":"s","message":{"role":"user","content":[{"type":"text","text":"[Request interrupted by user]"}]}}"#;
+        assert_eq!(parse_line(esc, "", Mode::Assist).unwrap().kind, EventKind::Done);
         let prompt = r#"{"type":"user","sessionId":"s","cwd":"C:\\p","message":{"role":"user","content":"do it"}}"#;
-        assert_eq!(parse_line(prompt, "", false).unwrap().kind, EventKind::Working { step: "Thinking…".into() });
+        assert_eq!(parse_line(prompt, "", Mode::Full).unwrap().kind, EventKind::Working { step: "Thinking…".into() });
+        assert!(parse_line(prompt, "", Mode::Assist).is_none());
         let side = r#"{"type":"assistant","sessionId":"s","isSidechain":true,"message":{"stop_reason":"end_turn","content":[]}}"#;
-        assert!(parse_line(side, "", false).is_none());
+        assert!(parse_line(side, "", Mode::Full).is_none());
         let title = r#"{"type":"custom-title","customTitle":"Build notch","sessionId":"s"}"#;
-        assert_eq!(parse_line(title, "", true).unwrap().title.as_deref(), Some("Build notch"));
-        assert!(parse_line(r#"{"type":"bridge-session","bridgeSessionId":"b","sessionId":"s"}"#, "", true).unwrap().remote);
-        assert!(parse_line(r#"{"type":"api-request","sessionId":"s"}"#, "", false).is_none());
+        assert_eq!(parse_line(title, "", Mode::Assist).unwrap().title.as_deref(), Some("Build notch"));
+        assert!(parse_line(r#"{"type":"bridge-session","bridgeSessionId":"b","sessionId":"s"}"#, "", Mode::Assist).unwrap().remote);
+        assert!(parse_line(r#"{"type":"api-request","sessionId":"s"}"#, "", Mode::Full).is_none());
+    }
+
+    #[test]
+    fn a_question_at_the_end_of_a_turn_is_needs_input() {
+        let wrap = r#"{"type":"assistant","sessionId":"ask1","message":{"stop_reason":"tool_use","content":[{"type":"tool_use","name":"mcp__ccd_turn__wrap_up","input":{"recap":"r","ask":"Ship it?"}}]}}"#;
+        parse_line(wrap, "", Mode::Full);
+        let end = r#"{"type":"assistant","sessionId":"ask1","message":{"stop_reason":"end_turn","content":[{"type":"text","text":"x"}]}}"#;
+        assert_eq!(parse_line(end, "", Mode::Full).unwrap().kind, EventKind::NeedsInput { reason: "Ship it?".into() });
+        // the next prompt answers it
+        parse_line(r#"{"type":"user","sessionId":"ask1","message":{"role":"user","content":"yes"}}"#, "", Mode::Full);
+        assert_eq!(parse_line(end, "", Mode::Full).unwrap().kind, EventKind::Done);
     }
 }

@@ -15,13 +15,15 @@ use windows::Win32::UI::WindowsAndMessaging::*;
 use crate::config::{self, Config, Pos};
 use crate::gfx::Gfx;
 use crate::model::{AgentEvent, Alert, Store, Usage};
-use crate::ui::{self, Action, Edge, Hit, Setting, Theme, CANVAS_H, CANVAS_W, PAD, PANEL_W, PILL_H, PILL_W};
+use crate::ui::{self, Action, Edge, Hit, Setting, Theme, CANVAS_H, CANVAS_W, PAD, PILL_H, PILL_W};
 use crate::{logln, tray, winutil};
 
 pub const WM_TRAY: u32 = WM_APP + 1;
 pub const WM_UIMSG: u32 = WM_APP + 2;
 pub const WM_FOREGROUND: u32 = WM_APP + 3;
 const WM_FIRSTRUN: u32 = WM_APP + 4;
+/// Sent by a second `notch.exe` (the desktop or taskbar shortcut): show yourself.
+const WM_SUMMON: u32 = WM_APP + 5;
 const WM_MOUSELEAVE: u32 = 0x02A3;
 
 const T_PULSE: usize = 1;
@@ -51,6 +53,8 @@ pub enum UiMsg {
     Event(AgentEvent),
     Events(Vec<AgentEvent>),
     Usage(Usage),
+    /// A toast was clicked: bring this session's window to the front.
+    Focus(String),
 }
 
 /// Thread-safe: hand a message to the UI thread.
@@ -205,6 +209,7 @@ pub struct App {
     /// Notch is holding the system awake (as opposed to the lid setting just being "do nothing").
     awake_hold: bool,
     usage_next: u64,
+    last_usage_try: u64,
     /// Settings is waiting for the user to press the new hotkey.
     capturing_hotkey: bool,
     hotkey_ok: bool,
@@ -376,7 +381,7 @@ impl App {
         let off = ((px - self.win.0 as f32) / s, (py - self.win.1 as f32) / s);
 
         let (tx, ty, tw, th) = if self.expanded {
-            let (w, h) = (PANEL_W, need);
+            let (w, h) = (ui::panel_width(self), need);
             let mid_y = (off.1 + chd / 2.0 - h / 2.0).clamp(PAD, (CANVAS_H - PAD - h).max(PAD));
             match self.edge {
                 Edge::Left => (off.0, mid_y, w, h),
@@ -746,6 +751,15 @@ impl App {
         self.invalidate();
     }
 
+    /// Show the notch and open it for a moment (shortcut clicked while already running).
+    fn summon(&mut self) {
+        self.user_hidden = false;
+        self.fs_hidden = false;
+        self.update_visibility();
+        self.set_expanded(true);
+        self.hold_until = Some(Instant::now() + std::time::Duration::from_millis(5000));
+    }
+
     fn toggle_hidden(&mut self) {
         self.user_hidden = self.shown;
         self.fs_hidden = false;
@@ -754,10 +768,11 @@ impl App {
 
     fn on_wheel(&mut self, delta: i32) {
         let n = self.store.sessions.len();
-        if !self.expanded || self.view != View::Main || n <= ui::MAX_ROWS {
+        let rows = ui::max_rows(self);
+        if !self.expanded || self.view != View::Main || n <= rows {
             return;
         }
-        let max = n - ui::MAX_ROWS;
+        let max = n - rows;
         let ns = if delta < 0 { (self.scroll + 1).min(max) } else { self.scroll.saturating_sub(1) };
         if ns != self.scroll {
             self.scroll = ns;
@@ -1144,13 +1159,14 @@ impl App {
         }
         let now = crate::util::now_unix();
         let gap = if force { 60 } else { 280 };
-        if self.usage.fetched_at != 0 && now < (self.usage.fetched_at + gap).max(self.usage_next) {
+        if now < self.usage_next || (self.last_usage_try != 0 && now < self.last_usage_try + gap) {
             return;
         }
         if !force && (self.locked || winutil::idle_secs() > 600) {
             return;
         }
         self.usage.loading = true;
+        self.last_usage_try = now;
         crate::usage::refresh(self.cfg.usage.clone());
         self.invalidate();
     }
@@ -1160,10 +1176,12 @@ impl App {
         if new.note.contains("rate limited") {
             self.usage_next = now + 900; // leave the endpoint alone for a while
         }
-        // keep recent real numbers rather than replace them with an estimate or an error
-        let downgrade = self.usage.source == "api" && new.source != "api" && now.saturating_sub(self.usage.fetched_at) < 1800;
-        if downgrade {
+        // Real percentages stay on screen until newer real percentages arrive. A failed
+        // fetch or an estimate never replaces them: the panel shows how old they are instead.
+        let has_pct = |u: &Usage| u.five_hour.as_ref().map(|w| w.pct.is_some()).unwrap_or(false) || u.week.as_ref().map(|w| w.pct.is_some()).unwrap_or(false);
+        if self.usage.source == "api" && has_pct(&self.usage) && !(new.source == "api" && has_pct(&new)) {
             self.usage.loading = false;
+            self.usage.note = new.note;
         } else {
             self.usage = new;
         }
@@ -1186,7 +1204,10 @@ impl App {
         if self.quiet {
             // bench / demo runs: no toasts or sounds
         } else if toast {
-            crate::toast::show(title, body, !n.sound);
+            let id = match &a {
+                Alert::NeedsInput { id, .. } | Alert::Done { id, .. } | Alert::Error { id, .. } => id,
+            };
+            crate::toast::show(title, body, !n.sound, crate::toast::focus_link(id));
         } else if n.sound {
             winutil::beep();
         }
@@ -1206,6 +1227,14 @@ impl App {
                 }
             }
             UiMsg::Usage(u) => self.on_usage(u),
+            UiMsg::Focus(id) => {
+                if let Some(i) = self.store.sessions.iter().position(|s| s.id == id) {
+                    self.click_session(i);
+                } else {
+                    // the session is gone from the list: at least show the notch
+                    self.summon();
+                }
+            }
         }
         self.update_visibility();
         self.update_timers();
@@ -1446,6 +1475,7 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
         }
         WM_FIRSTRUN => a.offer_hooks(),
         WM_HOTKEY => a.toggle_hidden(),
+        WM_SUMMON => a.summon(),
         WM_KEYDOWN | WM_SYSKEYDOWN => a.on_key(wp.0 as u32),
         WM_WTSSESSION_CHANGE => {
             // 7 = locked, 8 = unlocked: no usage polling while locked
@@ -1506,6 +1536,11 @@ pub fn run(opts: Opts) -> i32 {
             let name = crate::util::wide(&format!("Local\\NotchIslandSingleton{}", crate::util::instance_suffix()));
             let _mutex = CreateMutexW(None, true, PCWSTR(name.as_ptr()));
             if GetLastError() == ERROR_ALREADY_EXISTS {
+                // already running: ask that one to show itself instead of starting twice
+                let title = crate::util::wide(&winutil::window_title());
+                if let Ok(h) = FindWindowW(w!("NotchIsland"), PCWSTR(title.as_ptr())) {
+                    let _ = PostMessageW(Some(h), WM_SUMMON, WPARAM(0), LPARAM(0));
+                }
                 return 0;
             }
         }
@@ -1570,6 +1605,7 @@ pub fn run(opts: Opts) -> i32 {
             awake: false,
             awake_hold: false,
             usage_next: 0,
+            last_usage_try: 0,
             capturing_hotkey: false,
             hotkey_ok: true,
             locked: false,
@@ -1656,7 +1692,9 @@ pub fn run(opts: Opts) -> i32 {
         }
         a.update_visibility();
         a.update_timers();
-        crate::toast::register();
+        if crate::util::instance_suffix().is_empty() {
+            crate::toast::register(); // test instances must not take over the toast links
+        }
         crate::ipc::start(a.cfg.wsl.tcp_fallback);
         if !opts.demo {
             a.hotkey_ok = a.cfg.hotkey.is_empty() || crate::hotkey::register(hwnd, &a.cfg.hotkey);
@@ -1664,7 +1702,13 @@ pub fn run(opts: Opts) -> i32 {
             crate::adapters::start_all(&a.cfg);
             let _ = windows::Win32::System::RemoteDesktop::WTSRegisterSessionNotification(hwnd, 0);
             a.timer(T_USAGE, a.cfg.usage.enabled.then_some(300_000));
-            a.refresh_usage(true);
+            // show the last real numbers at once; only ask again if they are older than 5 minutes
+            if let Some(last) = crate::usage::load_last() {
+                a.usage = last;
+            }
+            if crate::util::now_unix().saturating_sub(a.usage.fetched_at) > 280 {
+                a.refresh_usage(true);
+            }
             a.refresh_rc(true);
             a.refresh_awake();
         }

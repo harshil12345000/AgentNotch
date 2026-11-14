@@ -16,9 +16,24 @@ cargo build --release
 target\release\notch.exe
 ```
 
-The exe is self-contained (static C runtime, fonts and logos inside). Copy it wherever you
-like and run it from there; `dist\notch.exe` is a convenient place that later builds do
-not overwrite.
+The exe is self-contained (static C runtime, fonts, logos and icon inside).
+
+### Install as an app
+
+```
+target\release\notch.exe --install
+```
+
+This copies the exe to `%LOCALAPPDATA%\Programs\Notch\notch.exe`, adds a **Notch**
+shortcut to the Desktop and the Start Menu, points any installed hooks and the
+Start-with-Windows entry at that copy, and starts it. Nothing needs administrator rights.
+Run it again after a rebuild to update the installed copy.
+
+Taskbar: Windows does not let a program pin itself. Right-click the Notch shortcut and
+choose **Pin to taskbar**. Notch has no taskbar window of its own; clicking the pinned
+icon (or the desktop shortcut) while it is running shows the notch and opens it.
+
+`notch.exe --uninstall` removes the shortcuts and the Start-with-Windows entry.
 
 On first start it asks whether to install the Claude Code hooks (see below).
 
@@ -33,6 +48,16 @@ On first start it asks whether to install the Claude Code hooks (see below).
   new combination; Backspace clears it, Esc cancels).
 - Blue dots (working) are steady. Amber (needs input), green (finished) and red (error)
   pulse, because those want you.
+- Clicking a toast brings that session's window to the front (toasts carry a `notch://`
+  link that runs `notch.exe --activate`).
+- Subagents running inside a session are listed under its row with what each is doing
+  (needs the hooks). They never change the session's own state: a session whose turn has
+  ended still shows as finished or waiting while a background subagent keeps working.
+- A turn that ends with a question for you shows as **needs input** (amber) with the
+  question; a turn that just ends shows as **done** (green).
+- On the left or right edge the collapsed tab shows three dots and then an arrow when
+  there are more sessions; the open panel is narrower and taller there, with a scrolling
+  list (mouse wheel).
 - Hover a session row and press the **x** to dismiss it. Only running sessions are
   recovered at startup; finished ones leave after 2 minutes (Settings: "Keep finished
   sessions").
@@ -146,6 +171,9 @@ running, waiting for approval or input, finished, failed.
   they are turned into an approximate percentage (marked `~`); otherwise the panel says
   the limits are unavailable and why. The first scan reads a week of transcripts once;
   after that only appended bytes are read (cache: `%LOCALAPPDATA%\Notch\usage-cache.tsv`).
+- The last real numbers are saved (`%LOCALAPPDATA%\Notch\usage-last.tsv`) and shown at
+  once after a restart. Real percentages are never replaced by an estimate or an error;
+  when they are more than 7 minutes old the panel says "as of ... ago".
 - Polled every 5 minutes and when you open the panel (at most once a minute). No polling
   while the PC is locked or idle.
 
@@ -175,7 +203,7 @@ If Notch quits or crashes while it is on, the saved values are put back exactly 
 were (on quit, or on the next start after a crash).
 
 The laptop's own screen still turns off when the lid is closed. This keeps the PC and any
-external monitor running.
+external monitor running. (The panel no longer prints this note.)
 
 This is not the same as the Claude desktop app's "Keep computer awake while Claude
 works", which only stops idle sleep and still sleeps on lid close.
@@ -246,12 +274,31 @@ Also checked:
   `~/.codex/hooks.json`: byte-identical afterwards, existing hooks stayed first.
 - Simulated hook events through the pipe: a permission prompt turns the session amber and
   opens the notch, Stop turns it green.
+- Toast-click route in an isolated instance: `--activate` reached the running notch and it
+  raised a window for the session. A second launch made the running one open.
+- `--install` on this machine: exe copied, Desktop and Start Menu shortcuts written,
+  Claude Code hooks re-pointed (existing hooks untouched), notch restarted from the
+  installed copy.
 - Restart recovers running sessions from transcripts; titles match the Claude app's.
 - Usage percentages from the real endpoint after an expired sign-in was renewed.
 - T3 Code's real database is readable (no active runs at the time).
-- 31 unit tests (`cargo test`).
+- 38 unit tests (`cargo test`), including: subagent events never change the main
+  session's state, a turn ending with a question is "needs input", and a turn end read
+  from the transcript rescues a missed Stop hook.
+
+Known limits on live accuracy:
+
+- A permission prompt is only visible through hooks. Sessions that were already running
+  when the hooks were installed do not have them until they are restarted; those are
+  followed from their transcripts, which show working / finished but not prompts.
+- After you approve a permission prompt nothing is reported until the tool finishes, so
+  the row stays amber for the length of that tool call.
+- Subagents are only seen through hooks.
 
 Not verified:
+
+- A real toast has not been clicked, and subagent lines have not been seen on a live
+  session (unit tests and demo data only).
 
 - Keep Awake and Remote Control start/stop have not been pressed (they change system
   state). Only the state detection has run.
