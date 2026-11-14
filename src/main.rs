@@ -16,6 +16,7 @@ mod model;
 mod power;
 mod proc;
 mod rc;
+mod sqlite;
 mod svgpath;
 mod toast;
 mod tray;
@@ -36,6 +37,7 @@ const HELP: &str = "Notch - a tiny island for AI coding agent sessions
   notch.exe --hooks-status          say whether they are installed
             [--settings <file>]     ... act on another settings.json
             [--wsl <distro>]        ... act on a running WSL distro
+            [--codex]               ... act on Codex (~/.codex/hooks.json) instead of Claude Code
   notch.exe --status                print what Notch detects (lid action, keep-awake, Remote Control, hooks)
   notch.exe --quit                  ask the running island to exit (restores power settings)
   notch.exe --hook                  (used by the hooks) forward stdin JSON to the island
@@ -64,6 +66,9 @@ fn main() {
         println!("held awake by an app: {}", power::system_held_awake());
         println!("keep awake by Notch: {}", power::ours());
         println!("remote control:      started by Notch = {}, running elsewhere = {}", rc::our_pid().is_some(), rc::external_running());
+        println!("t3 code:             {}", adapters::t3code::status());
+        let codex_hooks = adapters::codex::codex_home().join("hooks.json");
+        println!("codex hooks:         {}", if adapters::claude_hooks::installed(&codex_hooks) { "installed" } else { "not installed" });
         let hooks = adapters::claude_hooks::default_settings();
         println!("claude hooks:        {} ({})", if adapters::claude_hooks::installed(&hooks) { "installed" } else { "not installed" }, hooks.display());
         return;
@@ -82,9 +87,11 @@ fn main() {
             return;
         };
         use adapters::claude_hooks as h;
+        let settings = after("--settings").map(std::path::PathBuf::from);
         let target = match after("--wsl") {
             Some(distro) => wsl::hook_target(&distro),
-            None => Ok(h::windows_target(after("--settings").map(std::path::PathBuf::from))),
+            None if has("--codex") => Ok(h::codex_target(settings)),
+            None => Ok(h::windows_target(settings)),
         };
         let result = target.and_then(|t| match cmd {
             "--install-hooks" => h::install(&t),

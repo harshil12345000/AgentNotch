@@ -9,7 +9,9 @@ use crate::model::{Agent, AgentEvent};
 
 pub mod claude;
 pub mod claude_hooks;
+pub mod codex;
 pub mod stubs;
+pub mod t3code;
 pub mod transcript;
 
 pub trait AgentAdapter: Sync {
@@ -28,7 +30,7 @@ pub trait AgentAdapter: Sync {
     }
 }
 
-pub static REGISTRY: [&dyn AgentAdapter; 5] = [&claude::Claude, &stubs::CodexCli, &stubs::GeminiCli, &stubs::CursorAgent, &stubs::OpenCode];
+pub static REGISTRY: [&dyn AgentAdapter; 6] = [&claude::Claude, &codex::Codex, &t3code::T3Code, &stubs::GeminiCli, &stubs::CursorAgent, &stubs::OpenCode];
 
 pub fn on_push(agent_id: &str, payload: &Value, pids: &[u32], wsl: &str) -> Vec<AgentEvent> {
     REGISTRY.iter().find(|a| a.id() == agent_id).map(|a| a.on_push(payload, pids, wsl)).unwrap_or_default()

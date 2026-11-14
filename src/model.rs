@@ -65,6 +65,9 @@ pub struct AgentEvent {
     pub at: u64,
     /// The session is being followed through Remote Control.
     pub remote: bool,
+    /// Another adapter's name for the same work (T3 Code names the Claude or Codex
+    /// session it drives). Sessions with an id found in this text are folded into this one.
+    pub alias: Option<String>,
 }
 
 impl AgentEvent {
@@ -80,6 +83,7 @@ impl AgentEvent {
             soft: false,
             at: now_unix(),
             remote: false,
+            alias: None,
         }
     }
 }
@@ -138,6 +142,8 @@ pub struct Store {
     pub sessions: Vec<Session>,
     /// Sessions the user dismissed. They stay hidden until they do something new.
     dismissed: std::collections::HashSet<String>,
+    /// Aliases of sessions that a wrapper (T3 Code) already shows.
+    wrapped: Vec<String>,
     /// Titles (and Remote Control markers) seen before the session itself showed up.
     early: std::collections::HashMap<String, (String, bool)>,
     /// Most recent project dir seen on a live event (used by Remote Control).
@@ -154,6 +160,18 @@ impl Store {
             } else {
                 return None;
             }
+        }
+        if let Some(alias) = ev.alias.as_ref().filter(|a| a.len() >= 8) {
+            // this event comes from a wrapper: hide the wrapped agent's own row
+            self.sessions.retain(|s| s.agent == ev.agent || s.id.len() < 8 || !alias.contains(&s.id));
+            if !self.wrapped.contains(alias) {
+                if self.wrapped.len() >= 32 {
+                    self.wrapped.remove(0);
+                }
+                self.wrapped.push(alias.clone());
+            }
+        } else if ev.session_id.len() >= 8 && self.wrapped.iter().any(|a| a.contains(&ev.session_id)) {
+            return None;
         }
         let idx = self.sessions.iter().position(|s| s.id == ev.session_id && s.agent == ev.agent);
         let idx = match idx {
@@ -280,8 +298,9 @@ impl Store {
                 s.last_event = 0;
             }
         }
-        // Backfilled history never alerts.
-        if !ev.live {
+        // Only things that just happened alert: replayed history (startup backfill, the
+        // tail of a file seen for the first time) never does.
+        if now_unix().saturating_sub(ev.at) > 30 {
             alert = None;
         }
         self.sort();
@@ -412,6 +431,30 @@ mod tests {
         st.apply(ev(EventKind::Working { step: "x".into() }));
         assert_eq!(st.sessions[0].name(), "Real title");
         assert!(st.sessions[0].remote);
+    }
+    #[test]
+    fn wrapper_hides_the_wrapped_session() {
+        let mut st = Store::default();
+        let mut inner = AgentEvent::new(Agent::Claude, "11111111-2222-3333-4444-555555555555", "C:\\p", EventKind::Working { step: "x".into() });
+        st.apply(inner.clone());
+        let mut t3 = AgentEvent::new(Agent::T3Code, "thread-1", "C:\\p", EventKind::Working { step: "Running".into() });
+        t3.alias = Some("claude:acct:11111111-2222-3333-4444-555555555555".into());
+        st.apply(t3);
+        assert_eq!(st.sessions.len(), 1);
+        assert_eq!(st.sessions[0].agent, Agent::T3Code);
+        // later events from the wrapped session stay hidden
+        inner.kind = EventKind::Done;
+        st.apply(inner);
+        assert_eq!(st.sessions.len(), 1);
+    }
+    #[test]
+    fn old_events_do_not_alert() {
+        let mut st = Store::default();
+        st.apply(ev(EventKind::Working { step: "x".into() }));
+        let mut old = ev(EventKind::Done);
+        old.at = now_unix() - 120;
+        assert_eq!(st.apply(old), None);
+        assert_eq!(st.sessions[0].state, State::Done);
     }
     #[test]
     fn dismissed_sessions_return_only_on_new_activity() {

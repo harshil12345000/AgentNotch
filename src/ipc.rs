@@ -9,7 +9,9 @@ use windows::Win32::System::Pipes::*;
 
 use crate::app::{post, UiMsg};
 
-pub const PIPE_NAME: &str = r"\\.\pipe\notch";
+pub fn pipe_name() -> String {
+    format!(r"\\.\pipe\notch{}", crate::util::instance_suffix())
+}
 const MAX_MSG: usize = 4 * 1024 * 1024;
 
 fn handle(bytes: &[u8], need_token: Option<&str>) {
@@ -34,8 +36,9 @@ fn handle(bytes: &[u8], need_token: Option<&str>) {
 
 fn pipe_thread() {
     unsafe {
+        let name = crate::util::wide(&pipe_name());
         let h = CreateNamedPipeW(
-            w!(r"\\.\pipe\notch"),
+            PCWSTR(name.as_ptr()),
             PIPE_ACCESS_INBOUND,
             PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
             PIPE_UNLIMITED_INSTANCES,
@@ -121,15 +124,16 @@ pub fn start(tcp: bool) {
 /// Client side: open the pipe. None when the island is not running. Never waits long.
 pub fn connect() -> Option<std::fs::File> {
     for attempt in 0..3 {
-        match std::fs::OpenOptions::new().write(true).open(PIPE_NAME) {
+        match std::fs::OpenOptions::new().write(true).open(pipe_name()) {
             Ok(f) => return Some(f),
             Err(e) => {
                 // 231 = ERROR_PIPE_BUSY: both instances are mid-message
                 if e.raw_os_error() != Some(231) || attempt == 2 {
                     return None;
                 }
+                let name = crate::util::wide(&pipe_name());
                 unsafe {
-                    let _ = WaitNamedPipeW(w!(r"\\.\pipe\notch"), 15);
+                    let _ = WaitNamedPipeW(PCWSTR(name.as_ptr()), 15);
                 }
             }
         }

@@ -24,6 +24,16 @@ pub fn data_dir() -> PathBuf {
     p
 }
 
+/// Suffix that separates a test instance from the real one. Set NOTCH_INSTANCE=name to run
+/// a second, isolated notch (own pipe, own single-instance lock, own window title); hook
+/// helpers started with the same variable talk to that instance.
+pub fn instance_suffix() -> String {
+    match std::env::var("NOTCH_INSTANCE") {
+        Ok(n) if !n.is_empty() => format!("-{}", n.chars().filter(|c| c.is_ascii_alphanumeric()).take(16).collect::<String>()),
+        _ => String::new(),
+    }
+}
+
 pub fn exe_path() -> PathBuf {
     std::env::current_exe().unwrap_or_else(|_| PathBuf::from("notch.exe"))
 }

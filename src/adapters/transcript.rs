@@ -203,7 +203,7 @@ pub fn start(cfg: &Config) {
             return;
         }
         let r2 = root.clone();
-        watch_dir(&root, 120, move |changed| {
+        watch_dir(&root, true, 120, move |changed| {
             let mut evs = Vec::new();
             for p in changed {
                 if is_session_file(&r2, &p) {

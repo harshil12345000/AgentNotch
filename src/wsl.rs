@@ -64,7 +64,7 @@ pub fn hook_target(distro: &str) -> Result<crate::adapters::claude_hooks::Target
     }
     let home = home_of(distro).ok_or("could not read $HOME inside the distro")?;
     let exe = to_mnt_path(&crate::util::exe_path().to_string_lossy()).ok_or("notch.exe is not on a drive WSL can mount")?;
-    Ok(crate::adapters::claude_hooks::Target { settings: unc(distro, &format!("{home}/.claude/settings.json")), command: exe, args: vec!["--hook".into(), "--wsl".into(), distro.to_string()] })
+    Ok(crate::adapters::claude_hooks::Target { settings: unc(distro, &format!("{home}/.claude/settings.json")), command: exe, args: vec!["--hook".into(), "--wsl".into(), distro.to_string()], events: &crate::adapters::claude::HOOK_EVENTS, exec_form: true })
 }
 
 #[cfg(test)]

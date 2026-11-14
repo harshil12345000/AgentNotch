@@ -23,7 +23,11 @@ pub fn run(args: &[String]) {
     }
     // If the island is not running there is nothing to do (and no process snapshot is taken).
     let Some(mut pipe) = crate::ipc::connect() else { return };
-    let pids = if wsl.is_empty() { crate::proc::agent_chain() } else { Vec::new() };
+    // The process tree is only needed to find the session's window, so it is skipped for
+    // the high-volume tool events (the island keeps the pids from the last other event).
+    let head = &trimmed[..trimmed.len().min(4096)];
+    let noisy = [&b"\"PreToolUse\""[..], &b"\"PostToolUse\""[..]].iter().any(|n| head.windows(n.len()).any(|w| w == *n));
+    let pids = if wsl.is_empty() && !noisy { crate::proc::agent_chain() } else { Vec::new() };
     let pid_list = pids.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(",");
     let mut msg = Vec::with_capacity(trimmed.len() + 96);
     msg.extend_from_slice(format!("{{\"v\":1,\"agent\":{},\"wsl\":{},\"pids\":[{}],\"p\":", json_str(&agent), json_str(&wsl), pid_list).as_bytes());

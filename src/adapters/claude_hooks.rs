@@ -13,6 +13,11 @@ pub struct Target {
     /// Program the hook runs (exec form: no shell, so spaces in the path are fine).
     pub command: String,
     pub args: Vec<String>,
+    /// Hook events to register for.
+    pub events: &'static [&'static str],
+    /// Claude Code style exec form (`command` + `args`, `async`). False = one shell
+    /// command string, for tools that only understand that.
+    pub exec_form: bool,
 }
 
 /// The current user's settings.json on Windows (honours CLAUDE_CONFIG_DIR).
@@ -24,7 +29,19 @@ pub fn default_settings() -> PathBuf {
 }
 
 pub fn windows_target(settings: Option<PathBuf>) -> Target {
-    Target { settings: settings.unwrap_or_else(default_settings), command: crate::util::exe_path().to_string_lossy().replace('\\', "/"), args: vec!["--hook".into()] }
+    Target { settings: settings.unwrap_or_else(default_settings), command: crate::util::exe_path().to_string_lossy().replace('\\', "/"), args: vec!["--hook".into()], events: &HOOK_EVENTS, exec_form: true }
+}
+
+/// Codex keeps hooks in ~/.codex/hooks.json in the same shape. After installing, Codex asks
+/// the user to review and trust the new hooks (`/hooks`) before it runs them.
+pub fn codex_target(settings: Option<PathBuf>) -> Target {
+    Target {
+        settings: settings.unwrap_or_else(|| crate::adapters::codex::codex_home().join("hooks.json")),
+        command: crate::util::exe_path().to_string_lossy().replace('\\', "/"),
+        args: vec!["--hook".into(), "--agent".into(), "codex".into()],
+        events: &crate::adapters::codex::HOOK_EVENTS,
+        exec_form: false,
+    }
 }
 
 fn backup_path(settings: &Path) -> PathBuf {
@@ -46,8 +63,12 @@ fn is_ours(handler: &Value) -> bool {
 }
 
 fn handler(t: &Target) -> Value {
-    // async: Claude Code never waits for us. timeout: belt and braces.
-    json!({ "type": "command", "command": t.command, "args": t.args, "async": true, "timeout": 5 })
+    if t.exec_form {
+        // async: Claude Code never waits for us. timeout: belt and braces.
+        json!({ "type": "command", "command": t.command, "args": t.args, "async": true, "timeout": 5 })
+    } else {
+        json!({ "type": "command", "command": format!("\"{}\" {}", t.command, t.args.join(" ")), "timeout": 5 })
+    }
 }
 
 fn read(path: &Path) -> Result<Option<Vec<u8>>, String> {
@@ -163,13 +184,13 @@ pub fn install(t: &Target) -> Result<String, String> {
     let obj = root.as_object_mut().ok_or("settings.json is not a JSON object")?;
     let hooks = obj.entry("hooks").or_insert_with(|| Value::Object(Map::new()));
     let hooks = hooks.as_object_mut().ok_or("\"hooks\" in settings.json is not an object; left untouched")?;
-    for ev in HOOK_EVENTS {
+    for ev in t.events.iter().copied() {
         let groups = hooks.entry(ev).or_insert_with(|| Value::Array(Vec::new()));
         let groups = groups.as_array_mut().ok_or(format!("hooks.{ev} is not an array; left untouched"))?;
         groups.push(json!({ "hooks": [handler(t)] }));
     }
     write_atomic(&t.settings, &render(&root, original.as_deref()))?;
-    Ok(format!("Hooks installed in {} ({} events). Backup: {}", t.settings.display(), HOOK_EVENTS.len(), if bak.exists() { bak.display().to_string() } else { "none (file did not exist)".into() }))
+    Ok(format!("Hooks installed in {} ({} events). Backup: {}", t.settings.display(), t.events.len(), if bak.exists() { bak.display().to_string() } else { "none (file did not exist)".into() }))
 }
 
 pub fn uninstall(settings: &Path) -> Result<String, String> {
@@ -213,7 +234,7 @@ mod tests {
         d.join("settings.json")
     }
     fn target(p: &Path) -> Target {
-        Target { settings: p.to_path_buf(), command: "C:/Tools/notch.exe".into(), args: vec!["--hook".into()] }
+        Target { settings: p.to_path_buf(), command: "C:/Tools/notch.exe".into(), args: vec!["--hook".into()], events: &HOOK_EVENTS, exec_form: true }
     }
 
     const ORIGINAL: &str = "{\r\n    \"permissions\": {\"allow\": [\"Bash(ls)\"]},\r\n    \"hooks\": {\r\n        \"PreToolUse\": [{\"matcher\": \"Bash\", \"hooks\": [{\"type\": \"command\", \"command\": \"node guard.mjs\", \"timeout\": 10}]}]\r\n    },\r\n    \"zeta\": 1\r\n}";
@@ -264,6 +285,21 @@ mod tests {
         assert!(installed(&p));
         uninstall(&p).unwrap();
         assert!(!p.exists());
+    }
+
+    #[test]
+    fn codex_style_shell_form_roundtrip() {
+        let p = tmp("codex");
+        let original = "{\n  \"hooks\": {\n    \"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"curl.exe -s http://127.0.0.1:1/x\"}]}]\n  }\n}\n";
+        std::fs::write(&p, original).unwrap();
+        let t = Target { settings: p.clone(), command: "C:/Tools/notch.exe".into(), args: vec!["--hook".into(), "--agent".into(), "codex".into()], events: &["Stop", "PermissionRequest"], exec_form: false };
+        install(&t).unwrap();
+        let v: Value = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
+        assert_eq!(v["hooks"]["Stop"].as_array().unwrap().len(), 2);
+        assert_eq!(v["hooks"]["Stop"][1]["hooks"][0]["command"], "\"C:/Tools/notch.exe\" --hook --agent codex");
+        assert!(installed(&p));
+        uninstall(&p).unwrap();
+        assert_eq!(std::fs::read(&p).unwrap(), original.as_bytes());
     }
 
     #[test]

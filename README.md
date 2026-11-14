@@ -7,7 +7,7 @@ two one-click toggles: Claude Code Remote Control and Keep Awake (lid closed).
 
 Native Rust, Direct2D/DirectWrite, one exe (about 1 MB), no installer, no runtime.
 
-> Status: work in progress. See "What is and is not verified" at the end.
+> See "What is and is not verified" at the end for what has been measured and what has not.
 
 ## Run it
 
@@ -15,6 +15,10 @@ Native Rust, Direct2D/DirectWrite, one exe (about 1 MB), no installer, no runtim
 cargo build --release
 target\release\notch.exe
 ```
+
+The exe is self-contained (static C runtime, fonts and logos inside). Copy it wherever you
+like and run it from there; `dist\notch.exe` is a convenient place that later builds do
+not overwrite.
 
 On first start it asks whether to install the Claude Code hooks (see below).
 
@@ -25,6 +29,8 @@ On first start it asks whether to install the Claude Code hooks (see below).
   The position is remembered per monitor setup.
 - **Ctrl+/** hides and shows it. Change the keys in Settings (click the row, press the
   new combination; Backspace clears it, Esc cancels).
+- Blue dots (working) are steady. Amber (needs input), green (finished) and red (error)
+  pulse, because those want you.
 - Hover a session row and press the **x** to dismiss it. Only running sessions are
   recovered at startup; finished ones leave after 2 minutes (Settings: "Keep finished
   sessions").
@@ -93,19 +99,51 @@ slower to notice things and cannot see permission prompts.
   port. This only works when WSL uses mirrored networking; with the default NAT mode
   127.0.0.1 inside WSL is not the Windows host, so use the interop hook above.
 
+## Codex
+
+- Hooks (best): `notch.exe --install-hooks --codex` adds entries to `~/.codex/hooks.json`
+  next to any hooks already there (same merge, backup and byte-exact uninstall as for
+  Claude Code). Codex then asks you to review and trust the new hooks (`/hooks`) before
+  it runs them. Hooks are the only way Notch can see a Codex approval request.
+  Remove with `notch.exe --uninstall-hooks --codex`.
+- Rollout files under `~/.codex/sessions` are tailed as a fallback (turn started, tool
+  call, turn finished). Approvals are not written there, and Codex builds that keep
+  sessions in a database write no rollout files at all, so this fallback can see nothing.
+- Notch does not touch Codex's `notify` setting. If you want to chain it yourself, the
+  receiver is `notch.exe --codex-notify <json>` (turn finished only).
+
+## T3 Code
+
+T3 Code has no hooks or notify command. Notch reads its state database,
+`~/.t3/userdata/statev2.sqlite`, read-only through the SQLite that ships with Windows
+(`winsqlite3.dll`), each time the file changes. Each thread's latest run becomes a session:
+running, waiting for approval or input, finished, failed.
+
+- Individual tool calls inside a run are not shown, only the run's state.
+- The table names were checked against a real database (November 2026). If a T3 Code
+  update changes them, the query fails and the adapter goes quiet; `notch.exe --status`
+  says whether the database is readable.
+- A Claude session that T3 Code starts with your normal Claude settings also fires the
+  Claude Code hooks. When T3's run record names that session, Notch folds the two rows
+  into the T3 one. This folding is implemented from the database layout and has not been
+  seen working on a live T3 run.
+
 ## Usage limits
 
 - Source A: `GET https://api.anthropic.com/api/oauth/usage` with the OAuth token Claude
-  Code keeps in `~/.claude/.credentials.json`. The file is only read, the token is sent
-  only to api.anthropic.com and is never logged or shown. The endpoint is undocumented.
-  If the token has expired (Claude Code refreshes it when it runs), is rejected, or the
-  endpoint rate-limits, Notch falls back to source B.
-- Source B: a local estimate from the transcripts, like ccusage: tokens in the current
-  5-hour block and in the last 7 days (input + output + cache writes). It shows tokens,
-  not a percentage, unless you set `estimate_limit_5h_tokens` /
-  `estimate_limit_week_tokens` under `[usage]`. The first scan reads a week of
-  transcripts once; after that only appended bytes are read (cache:
-  `%LOCALAPPDATA%\Notch\usage-cache.tsv`).
+  Code keeps in `~/.claude/.credentials.json`. Notch only reads that file; the token is
+  sent only to api.anthropic.com and is never logged or shown. The endpoint is
+  undocumented and can change.
+- That token goes stale when Claude Code is not used from a terminal (for example when
+  you only use the desktop app). Notch never refreshes or writes it. Instead it runs
+  `claude auth status` hidden, at most once every 20 minutes, which makes Claude Code
+  renew its own file.
+- Source B (only when A fails): a local estimate from the transcripts, like ccusage:
+  tokens in the current 5-hour block and the last 7 days. Token counts are not shown.
+  If you set `estimate_limit_5h_tokens` / `estimate_limit_week_tokens` under `[usage]`
+  they are turned into an approximate percentage (marked `~`); otherwise the panel says
+  the limits are unavailable and why. The first scan reads a week of transcripts once;
+  after that only appended bytes are read (cache: `%LOCALAPPDATA%\Notch\usage-cache.tsv`).
 - Polled every 5 minutes and when you open the panel (at most once a minute). No polling
   while the PC is locked or idle.
 
@@ -146,6 +184,10 @@ One line per second and a summary go to `%LOCALAPPDATA%\Notch\logs\bench.log` (a
 if redirected). `cpu` is the share of the whole machine (what Task Manager shows), `cpu1`
 the share of one core, `frames` / `render` the redraws in that second and their total time.
 
+Test instance: set `NOTCH_INSTANCE=test` to run a second, isolated notch (own pipe, lock
+and window title) next to the real one. Hook helpers started with the same variable talk
+to that instance. This is how the stress bench below was run.
+
 ## Adding an adapter
 
 1. Add `src/adapters/<name>.rs` with a type that implements `AgentAdapter`
@@ -169,27 +211,47 @@ one of: `SessionStarted`, `Working{step}`, `NeedsInput{reason}`, `Done`, `Error`
 
 ## What is and is not verified
 
-Measured or tested on the development machine (Windows 11, 150% scaling):
+Measured on the development machine (Windows 11, 12 logical cores, 150% scaling).
+`cpu` is the share of the whole machine, as Task Manager shows it.
 
-- Idle, no sessions, 60 s bench: 0.002% average CPU, 4.95 MB private working set
-  (24.4 MB working set including shared DLL pages). Measured before the font, logos and
-  usage code were added; with those, about 10 MB private / 32 MB working set.
-- Hook install then uninstall on a copy of a real `settings.json`: byte-identical, and an
-  existing PreToolUse hook stayed first.
-- Simulated hook events through the pipe: permission prompt turns the session amber and
+| Case | CPU avg | CPU peak | Working set | Private working set |
+|---|---|---|---|---|
+| Idle, no sessions, 60 s (first milestone build) | 0.002% | 0.13% | 24.4 MB | 4.95 MB |
+| 5 demo sessions, 3 dots pulsing, collapsed, 20 s | 0.22% | 0.78% | 28 MB peak, 12 MB after trim | 6.9 MB peak |
+| 5 demo sessions, 3 dots pulsing, expanded, 20 s | 0.38% | 0.95% | 32 MB peak, 13 MB after trim | 10.1 MB peak |
+| 5 sessions, about 80 hook events per second for 30 s, expanded | 1.85% | 4.23% | 41.1 MB peak | 14.0 MB peak |
+| Same, collapsed | 1.68% | 4.51% | 40.0 MB peak | 13.5 MB peak |
+
+The idle row predates the font, logos, usage and adapter code and has not been re-run on
+the final build. About 12 seconds after start Notch hands unused startup memory back.
+
+Hook helper (`notch.exe --hook`), timed from a Python harness whose own cost to start any
+process is about 34 ms median on this machine; the figures are what the harness saw:
+
+- island running: median 9.9 ms, p95 13.5 ms, max 24.8 ms (small payload, n=40);
+  median 10.6 ms with a 200 KB payload
+- island not running: median 9.4 ms, exit code 0
+
+Also checked:
+
+- Hook install then uninstall on copies of a real `~/.claude/settings.json` and a real
+  `~/.codex/hooks.json`: byte-identical afterwards, existing hooks stayed first.
+- Simulated hook events through the pipe: a permission prompt turns the session amber and
   opens the notch, Stop turns it green.
-- Restart recovers running sessions from transcripts.
-- 23 unit tests (`cargo test`).
+- Restart recovers running sessions from transcripts; titles match the Claude app's.
+- Usage percentages from the real endpoint after an expired sign-in was renewed.
+- T3 Code's real database is readable (no active runs at the time).
+- 31 unit tests (`cargo test`).
 
-Not yet verified or not built:
+Not verified:
 
-- T3 Code and Codex adapters are stubs.
-- Keep Awake and Remote Control start/stop have not been exercised end to end (they
-  change system state); only the state detection has been run.
-- Dragging between edges, the hotkey, toasts on screen, click-to-focus, multi-monitor
-  and mixed-DPI behaviour have not been tested by hand.
-- Hook latency has not been measured properly.
-- With sessions pulsing, redraws cost about 1 to 2% of the machine; this has not been
-  tuned, and the 5-session acceptance bench has not been run on the current build.
+- Keep Awake and Remote Control start/stop have not been pressed (they change system
+  state). Only the state detection has run.
+- Dragging between edges, the hotkey, toasts on screen, click-to-focus, multi-monitor and
+  mixed-DPI behaviour have not been tested by hand.
+- The T3 Code adapter has not seen a live run, and the Codex adapter has not seen a live
+  Codex session (payloads follow the docs and unit tests).
+- WSL hooks and transcript backfill are untested (no distro was running).
 - Fullscreen auto-hide reacts to foreground changes; a window that goes fullscreen
   without a foreground change (F11) is noticed only at the next change.
+- Gemini CLI, Cursor agent and OpenCode are stubs.

@@ -219,10 +219,15 @@ pub fn pick_folder(owner: HWND) -> Option<String> {
     }
 }
 
+pub fn window_title() -> String {
+    format!("Notch{}", crate::util::instance_suffix())
+}
+
 /// Ask an already running island to close cleanly.
 pub fn close_running_instance() {
+    let title = wide(&window_title());
     unsafe {
-        if let Ok(h) = FindWindowW(w!("NotchIsland"), w!("Notch")) {
+        if let Ok(h) = FindWindowW(w!("NotchIsland"), PCWSTR(title.as_ptr())) {
             let _ = PostMessageW(Some(h), WM_CLOSE, WPARAM(0), LPARAM(0));
         }
     }

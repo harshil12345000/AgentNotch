@@ -21,7 +21,6 @@ macro_rules! stub {
     };
 }
 
-stub!(CodexCli, "codex", Agent::Codex);
 stub!(GeminiCli, "gemini", Agent::Gemini);
 stub!(CursorAgent, "cursor", Agent::Cursor);
 stub!(OpenCode, "opencode", Agent::OpenCode);

@@ -35,6 +35,7 @@ const T_RC: usize = 8;
 const T_EXPIRE: usize = 9;
 const T_FSCHECK: usize = 10;
 const T_TRIM: usize = 11;
+const T_COALESCE: usize = 12;
 
 /// How close (DIPs) the notch's centre must come to a screen edge to attach to it.
 const SNAP_DIST: f32 = 56.0;
@@ -172,6 +173,11 @@ pub struct App {
     dirty: bool,
     /// Only the pulsing dots need a new frame.
     pulse_dirty: bool,
+    /// Event-driven redraws are limited to about 8 a second: `coalescing` is set while
+    /// that window is open, `redraw_pending` when something arrived during it.
+    coalescing: bool,
+    redraw_pending: bool,
+    last_height: f32,
     /// The pulsing dots of the last full frame.
     pub pulses: std::cell::RefCell<Vec<ui::PulseDot>>,
     trimmed: bool,
@@ -1144,6 +1150,8 @@ impl App {
     // ---------------------------------------------------------------- events from workers
 
     fn on_uimsg(&mut self, msg: UiMsg) {
+        let before = self.collapsed_signature();
+        let usage_changed = matches!(msg, UiMsg::Usage(_));
         match msg {
             UiMsg::Event(ev) => self.apply_event(ev),
             UiMsg::Events(evs) => {
@@ -1155,9 +1163,33 @@ impl App {
         }
         self.update_visibility();
         self.update_timers();
-        self.invalidate();
         if self.expanded {
-            self.kick(); // content height may have changed
+            // animate only when the panel has to change size
+            let h = ui::content_height(self);
+            if (h - self.last_height).abs() > 0.5 {
+                self.last_height = h;
+                self.kick();
+            }
+            self.request_redraw();
+        } else if usage_changed || before != self.collapsed_signature() {
+            // collapsed: a new step text is not visible, so only state changes repaint
+            self.request_redraw();
+        }
+    }
+
+    /// What the collapsed notch shows: one state per session.
+    fn collapsed_signature(&self) -> u64 {
+        self.store.sessions.iter().fold(self.store.sessions.len() as u64, |acc, s| acc.wrapping_mul(31).wrapping_add(s.state as u64 + 1))
+    }
+
+    /// Redraw soon, but not more than about 8 times a second however fast events arrive.
+    fn request_redraw(&mut self) {
+        if self.coalescing {
+            self.redraw_pending = true;
+        } else {
+            self.coalescing = true;
+            self.invalidate();
+            self.timer(T_COALESCE, Some(125));
         }
     }
 
@@ -1209,6 +1241,15 @@ impl App {
     fn on_timer(&mut self, id: usize) {
         match id {
             T_PULSE => self.pulse_dirty = true,
+            T_COALESCE => {
+                if self.redraw_pending {
+                    self.redraw_pending = false;
+                    self.invalidate();
+                } else {
+                    self.coalescing = false;
+                    self.timer(T_COALESCE, None);
+                }
+            }
             T_SECOND => self.invalidate(),
             T_HOVER_OPEN => {
                 self.timer(T_HOVER_OPEN, None);
@@ -1418,7 +1459,8 @@ pub fn run(opts: Opts) -> i32 {
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         let snapshot = opts.snapshot.is_some();
         if !snapshot {
-            let _mutex = CreateMutexW(None, true, w!("Local\\NotchIslandSingleton"));
+            let name = crate::util::wide(&format!("Local\\NotchIslandSingleton{}", crate::util::instance_suffix()));
+            let _mutex = CreateMutexW(None, true, PCWSTR(name.as_ptr()));
             if GetLastError() == ERROR_ALREADY_EXISTS {
                 return 0;
             }
@@ -1462,6 +1504,9 @@ pub fn run(opts: Opts) -> i32 {
             animating: false,
             dirty: false,
             pulse_dirty: false,
+            coalescing: false,
+            redraw_pending: false,
+            last_height: 0.0,
             pulses: std::cell::RefCell::new(Vec::new()),
             trimmed: false,
             last_frame: Instant::now(),
@@ -1526,7 +1571,7 @@ pub fn run(opts: Opts) -> i32 {
         let hwnd = match CreateWindowExW(
             WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_NOACTIVATE,
             class,
-            w!("Notch"),
+            PCWSTR(crate::util::wide(&winutil::window_title()).as_ptr()),
             WS_POPUP,
             0,
             0,

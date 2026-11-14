@@ -7,10 +7,10 @@ use windows::core::PCWSTR;
 use windows::Win32::Foundation::*;
 use windows::Win32::Storage::FileSystem::*;
 
-/// Block on `dir` (recursively) and call `on_change` with the set of changed files.
+/// Block on `dir` (and its subfolders when `recursive`) and call `on_change` with the set of changed files.
 /// Changes are coalesced for `settle_ms` so a burst of writes costs one read.
 /// Returns only if the directory cannot be watched.
-pub fn watch_dir(dir: &Path, settle_ms: u32, mut on_change: impl FnMut(HashSet<PathBuf>)) {
+pub fn watch_dir(dir: &Path, recursive: bool, settle_ms: u32, mut on_change: impl FnMut(HashSet<PathBuf>)) {
     let wide: Vec<u16> = dir.as_os_str().to_string_lossy().encode_utf16().chain(std::iter::once(0)).collect();
     unsafe {
         let Ok(h) = CreateFileW(PCWSTR(wide.as_ptr()), FILE_LIST_DIRECTORY.0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, None, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, None) else {
@@ -25,7 +25,7 @@ pub fn watch_dir(dir: &Path, settle_ms: u32, mut on_change: impl FnMut(HashSet<P
                 h,
                 buf.as_mut_ptr() as *mut _,
                 (buf.len() * 4) as u32,
-                true,
+                recursive,
                 FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_SIZE | FILE_NOTIFY_CHANGE_FILE_NAME,
                 Some(&mut got),
                 None,
