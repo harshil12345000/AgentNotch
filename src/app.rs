@@ -1120,7 +1120,7 @@ impl App {
         // the PC awake (switch Notch's own hold on).
         let res = if self.awake_hold || crate::power::lid_is_do_nothing() {
             self.awake_hold = false;
-            crate::power::disable()
+            crate::power::disable(true)
         } else {
             crate::power::enable().map(|_| self.awake_hold = true)
         };
@@ -1388,7 +1388,7 @@ impl App {
     fn shutdown(&mut self) {
         // put the power settings back exactly as they were before Keep Awake
         if crate::power::ours() {
-            if let Err(e) = crate::power::disable() {
+            if let Err(e) = crate::power::disable(false) {
                 logln!("power: restore on exit failed: {e}");
             }
         }

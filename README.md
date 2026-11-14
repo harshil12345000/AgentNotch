@@ -163,10 +163,16 @@ whose transcript carries a Remote Control marker (for example the Claude desktop
 
 ## Keep Awake
 
-Sets "when I close the lid: do nothing" on battery and mains for the active power plan and
-holds the system and display awake. The previous lid values are saved to
-`%APPDATA%\Notch\power-restore.toml` first and restored when you switch it off, when
-Notch quits, or on the next start after a crash.
+On: sets "when I close the lid: do nothing" for both plugged in and on battery (active
+power plan) and holds the system and display awake. The previous values are saved to
+`%APPDATA%\Notch\power-restore.toml` first.
+
+Off (clicking the toggle): both sides leave "do nothing". Each goes back to its saved
+value; a side that was already "do nothing" before Notch touched it goes to sleep, the
+Windows default.
+
+If Notch quits or crashes while it is on, the saved values are put back exactly as they
+were (on quit, or on the next start after a crash).
 
 The laptop's own screen still turns off when the lid is closed. This keeps the PC and any
 external monitor running.

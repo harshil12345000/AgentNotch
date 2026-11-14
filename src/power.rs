@@ -123,12 +123,26 @@ fn read_journal() -> Option<(u32, u32)> {
     Some((get("ac")?, get("dc")?))
 }
 
-/// Put back what was there before `enable`. With no journal (the lid was already "do
-/// nothing" when Notch started and the user switches it off here) the Windows default,
-/// sleep, is applied.
-pub fn disable() -> Result<(), String> {
+/// Where the lid settings go when Keep Awake is switched off.
+///
+/// `by_user` = the toggle was clicked: both plugged-in and battery must leave "do nothing",
+/// so each side goes back to its saved value, or to sleep (the Windows default) if that
+/// side was already "do nothing" before Notch touched it or there is nothing saved.
+/// Otherwise (Notch is quitting) the saved values are put back exactly as they were.
+pub fn off_target(saved: Option<(u32, u32)>, by_user: bool) -> (u32, u32) {
+    let (ac, dc) = saved.unwrap_or((SLEEP, SLEEP));
+    if by_user {
+        let fix = |v: u32| if v == DO_NOTHING { SLEEP } else { v };
+        (fix(ac), fix(dc))
+    } else {
+        (ac, dc)
+    }
+}
+
+/// Switch Keep Awake off (see `off_target`).
+pub fn disable(by_user: bool) -> Result<(), String> {
     hold(false);
-    let target = read_journal().unwrap_or((SLEEP, SLEEP));
+    let target = off_target(read_journal(), by_user);
     if read_lid() != Some(target) {
         write_lid(target.0, target.1)?;
     }
@@ -145,5 +159,22 @@ pub fn recover_after_crash() {
             Err(e) => crate::logln!("power: could not restore lid action: {e}"),
         }
         let _ = std::fs::remove_file(journal());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn switching_off_changes_both_sides() {
+        // battery was already "do nothing" before Notch: a click still turns it off
+        assert_eq!(off_target(Some((SLEEP, DO_NOTHING)), true), (SLEEP, SLEEP));
+        // other saved actions (2 = hibernate) come back as they were
+        assert_eq!(off_target(Some((2, SLEEP)), true), (2, SLEEP));
+        // nothing saved: the Windows default
+        assert_eq!(off_target(None, true), (SLEEP, SLEEP));
+        // quitting restores exactly what was there
+        assert_eq!(off_target(Some((SLEEP, DO_NOTHING)), false), (SLEEP, DO_NOTHING));
     }
 }
