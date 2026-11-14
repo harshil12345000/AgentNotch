@@ -88,20 +88,60 @@ fn window(w: Option<ApiWindow>) -> Option<UsageWindow> {
     Some(UsageWindow { pct: Some(pct.clamp(0.0, 100.0)), tokens: None, resets_at: w.resets_at.as_deref().and_then(parse_rfc3339) })
 }
 
+fn read_oauth() -> Result<OAuth, String> {
+    let bytes = std::fs::read(claude_dir().join(".credentials.json")).map_err(|_| "no Claude login found".to_string())?;
+    let creds: Creds = serde_json::from_slice(&bytes).map_err(|_| "credentials file not understood".to_string())?;
+    creds.oauth.ok_or("no Claude subscription login".to_string())
+}
+
+fn expired(o: &OAuth) -> bool {
+    o.expires_at.map(|exp| exp > 0.0 && (exp / 1000.0) < (now_unix() + 60) as f64).unwrap_or(false)
+}
+
+/// The saved login goes stale when Claude Code has not been used from a terminal for a
+/// while (for example when sessions run from the desktop app). Notch never refreshes or
+/// writes the token itself: it asks Claude Code to, by running `claude auth status`, which
+/// renews its own credentials file. Output is discarded. At most once every 20 minutes.
+fn ask_claude_to_refresh() {
+    use std::os::windows::process::CommandExt;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static LAST: AtomicU64 = AtomicU64::new(0);
+    let now = now_unix();
+    if now.saturating_sub(LAST.swap(now, Ordering::Relaxed)) < 1200 {
+        return;
+    }
+    let child = std::process::Command::new("cmd.exe")
+        .args(["/c", "claude", "auth", "status"])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .creation_flags(0x0800_0000) // no window
+        .spawn();
+    if let Ok(mut c) = child {
+        for _ in 0..100 {
+            if matches!(c.try_wait(), Ok(Some(_))) {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
+        let _ = c.kill();
+    }
+}
+
 impl UsageSource for ClaudeOAuth {
     fn id(&self) -> &'static str {
         "oauth"
     }
     fn fetch(&self, _cfg: &UsageCfg) -> Result<Usage, String> {
-        let bytes = std::fs::read(claude_dir().join(".credentials.json")).map_err(|_| "no Claude login found".to_string())?;
-        let creds: Creds = serde_json::from_slice(&bytes).map_err(|_| "credentials file not understood".to_string())?;
-        let oauth = creds.oauth.ok_or("no Claude subscription login")?;
-        let mut token = oauth.access_token.filter(|t| !t.is_empty()).ok_or("no access token")?;
-        if let Some(exp) = oauth.expires_at {
-            if exp > 0.0 && (exp / 1000.0) < now_unix() as f64 {
-                return Err("login token expired (open Claude Code to refresh it)".into());
+        let mut oauth = read_oauth()?;
+        if expired(&oauth) {
+            ask_claude_to_refresh();
+            oauth = read_oauth()?;
+            if expired(&oauth) {
+                return Err("Claude sign-in expired: run `claude` once in a terminal".into());
             }
         }
+        let mut token = oauth.access_token.filter(|t| !t.is_empty()).ok_or("no access token")?;
         let headers = format!("Authorization: Bearer {token}\r\nanthropic-beta: oauth-2025-04-20\r\nAccept: application/json\r\n");
         // drop our copy of the token as soon as the header is built
         unsafe { token.as_bytes_mut().fill(0) };
@@ -116,7 +156,7 @@ impl UsageSource for ClaudeOAuth {
                 }
                 Ok(u)
             }
-            401 | 403 => Err("login token rejected (open Claude Code to refresh it)".into()),
+            401 | 403 => Err("Claude sign-in rejected: run `claude` once in a terminal".into()),
             429 => Err(format!("usage endpoint rate limited{}", retry.map(|r| format!(" (retry in {r}s)")).unwrap_or_default())),
             s => Err(format!("usage endpoint returned HTTP {s}")),
         }

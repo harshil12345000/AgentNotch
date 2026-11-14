@@ -459,15 +459,14 @@ fn expanded(a: &App, g: &Gfx, t: &Theme, x: f32, y: f32, w: f32, hits: &mut Vec<
     if hov(&Action::Usage) {
         g.fill_rr(x + 6.0, cy + 2.0, w - 12.0, 44.0, 12.0, t.hover);
     }
-    if a.usage.five_hour.is_none() && a.usage.week.is_none() {
-        let msg = if a.usage.loading {
-            "Usage: loading…".to_string()
-        } else if a.usage.note.is_empty() {
-            "Usage: not loaded yet".to_string()
-        } else {
-            format!("Usage: {}", a.usage.note)
-        };
-        g.text(&msg, Font::Small, x + 16.0, cy, w - 32.0, 48.0, Align::Left, t.dim);
+    let has_pct = |u: &Option<UsageWindow>| u.as_ref().map(|u| u.pct.is_some()).unwrap_or(false);
+    if !has_pct(&a.usage.five_hour) && !has_pct(&a.usage.week) {
+        // no percentages to show: say why in one line instead of raw token counts
+        let first = if a.usage.loading { "Usage limits: loading…" } else { "Usage limits: not available right now" };
+        let why = a.usage.note.split(';').next().unwrap_or("").trim();
+        let second = if a.usage.loading || why.is_empty() { "Click to retry".to_string() } else { format!("{why} · click to retry") };
+        g.text(first, Font::Small, x + 16.0, cy + 6.0, w - 32.0, 18.0, Align::Left, t.text);
+        g.text(&second, Font::Small, x + 16.0, cy + 24.0, w - 32.0, 18.0, Align::Left, t.dim);
     } else {
         usage_row(g, t, x, cy + 4.0, w, "5h", a.usage.five_hour.as_ref(), a.usage.source);
         usage_row(g, t, x, cy + 24.0, w, "Week", a.usage.week.as_ref(), a.usage.source);
@@ -497,15 +496,15 @@ fn usage_row(g: &Gfx, t: &Theme, x: f32, y: f32, w: f32, label: &str, u: Option<
         return;
     };
     let bar_x = x + 54.0;
-    let bar_w = 120.0;
+    let bar_w = 104.0;
     let mut tx = bar_x;
     if let Some(p) = u.pct {
         g.fill_rr(bar_x, y + 7.0, bar_w, 4.0, 2.0, t.track);
         let c = if p < 60.0 { t.text.a(0.85) } else { usage_color(p, t) };
         g.fill_rr(bar_x, y + 7.0, (bar_w * p / 100.0).clamp(4.0, bar_w), 4.0, 2.0, c);
         let est = if source == "estimate" { "~" } else { "" };
-        g.text(&format!("{est}{p:.0}%"), Font::Bold, bar_x + bar_w + 8.0, y, 44.0, 18.0, Align::Left, if p < 60.0 { t.text } else { c });
-        tx = bar_x + bar_w + 52.0;
+        g.text(&format!("{est}{p:.0}% used"), Font::Bold, bar_x + bar_w + 8.0, y, 70.0, 18.0, Align::Left, if p < 60.0 { t.text } else { c });
+        tx = bar_x + bar_w + 78.0;
     } else if let Some(tok) = u.tokens {
         g.text(&format!("~{} tokens (local estimate)", fmt_tokens(tok)), Font::Small, bar_x, y, 180.0, 18.0, Align::Left, t.text);
         tx = bar_x + 180.0;

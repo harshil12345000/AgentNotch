@@ -5,7 +5,7 @@ live. It sits flush against a screen edge like the MacBook notch, opens when you
 it, tells you when a session finishes or needs input, shows your usage limits, and has
 two one-click toggles: Claude Code Remote Control and Keep Awake (lid closed).
 
-Native Rust, Direct2D/DirectWrite, one exe (about 0.8 MB), no installer, no runtime.
+Native Rust, Direct2D/DirectWrite, one exe (about 1 MB), no installer, no runtime.
 
 > Status: work in progress. See "What is and is not verified" at the end.
 
