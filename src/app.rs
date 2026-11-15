@@ -1194,7 +1194,12 @@ impl App {
             crate::power::enable().map(|_| self.awake_hold = true)
         };
         match res {
-            Ok(_) => logln!("keep awake: {}", if self.awake_hold { "on" } else { "off" }),
+            Ok(_) => {
+                logln!("keep awake: {}", if self.awake_hold { "on" } else { "off" });
+                // remembered: it stays on across restarts until it is switched off here
+                self.cfg.keep_awake = self.awake_hold;
+                config::save(&self.cfg);
+            }
             Err(e) => {
                 winutil::message_box(self.hwnd, "Notch", &format!("Could not change the power settings:\n\n{e}"), false);
             }
@@ -1495,8 +1500,10 @@ impl App {
     }
 
     fn shutdown(&mut self) {
-        // put the power settings back exactly as they were before Keep Awake
-        if crate::power::ours() {
+        // Keep Awake that was switched on stays on: the lid setting is left in place and is
+        // picked up again at the next start. Otherwise put the power settings back exactly
+        // as they were.
+        if crate::power::ours() && !self.cfg.keep_awake {
             if let Err(e) = crate::power::disable(false) {
                 logln!("power: restore on exit failed: {e}");
             }
@@ -1779,7 +1786,15 @@ pub fn run(opts: Opts) -> i32 {
         crate::ipc::start(a.cfg.wsl.tcp_fallback);
         if !opts.demo {
             a.hotkey_ok = a.cfg.hotkey.is_empty() || crate::hotkey::register(hwnd, &a.cfg.hotkey);
-            crate::power::recover_after_crash();
+            if a.cfg.keep_awake {
+                // switched on earlier and meant to stay on
+                match crate::power::enable() {
+                    Ok(_) => a.awake_hold = true,
+                    Err(e) => logln!("keep awake: could not re-apply at start: {e}"),
+                }
+            } else {
+                crate::power::recover_after_crash();
+            }
             crate::adapters::start_all(&a.cfg);
             let _ = windows::Win32::System::RemoteDesktop::WTSRegisterSessionNotification(hwnd, 0);
             a.timer(T_USAGE, a.cfg.usage.enabled.then_some(300_000));

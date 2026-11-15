@@ -246,8 +246,11 @@ Off (clicking the toggle): both sides leave "do nothing". Each goes back to its 
 value; a side that was already "do nothing" before Notch touched it goes to sleep, the
 Windows default.
 
-If Notch quits or crashes while it is on, the saved values are put back exactly as they
-were (on quit, or on the next start after a crash).
+Once switched on it stays on: the choice is remembered (`keep_awake` in the config), the
+lid setting is left in place when Notch quits, and it is applied again at every start.
+While Notch is not running the lid setting still holds; only the extra "do not idle-sleep,
+keep the display on" hold needs Notch running. Switch it off with the same toggle, which
+puts the saved values back as described above.
 
 The laptop's own screen still turns off when the lid is closed. This keeps the PC and any
 external monitor running. (The panel no longer prints this note.)
