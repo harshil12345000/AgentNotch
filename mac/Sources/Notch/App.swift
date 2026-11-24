@@ -269,7 +269,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let s = state.store.sessions.first(where: { $0.id == id }) { Focus.open(s) } else { summon() }
     }
 
-    private func alert(_ a: Alert) {
+    private func alert(_ a: NotchCore.Alert) {
         let c = state.config
         let (title, body): (String, String)
         var canDecide = false

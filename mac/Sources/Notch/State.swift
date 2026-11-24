@@ -77,7 +77,7 @@ final class AppState: ObservableObject {
     private var replies: [Int: IPC.Reply] = [:]
     private var nextToken = 1
     private var usageNextTry: UInt64 = 0
-    var onAlert: ((Alert) -> Void)?
+    var onAlert: ((NotchCore.Alert) -> Void)?
     var onLayoutChange: (() -> Void)?
     var isDemo = false
 
@@ -88,7 +88,7 @@ final class AppState: ObservableObject {
     // MARK: events
 
     func apply(_ events: [AgentEvent]) {
-        var alerts = [Alert]()
+        var alerts = [NotchCore.Alert]()
         for ev in events where enabled(ev.agent) {
             if ev.live { LiveSessions.mark(ev.sessionId) }
             if let a = store.apply(ev) { alerts.append(a) }
