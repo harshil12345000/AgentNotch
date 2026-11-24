@@ -46,17 +46,13 @@ jobs:
           echo "--- still running?"
           pgrep -lf "Applications/Notch.app" || echo "NOTCH IS NOT RUNNING ANY MORE"
           ls "$HOME/Library/Logs/DiagnosticReports/" 2>/dev/null | grep -i notch || echo "no crash reports"
-          for f in "$HOME"/Library/Logs/DiagnosticReports/Notch*; do [ -f "$f" ] && python3 -c "
-import json,sys
-t=open(sys.argv[1]).read().split('
-',1)
-try:
-    b=json.loads(t[1]); e=b.get('exception',{}); print('exception:', e.get('type'), e.get('signal'), b.get('termination',{}).get('indicator'))
-    th=[x for x in b.get('threads',[]) if x.get('triggered')][0]
-    imgs=b.get('usedImages',[])
-    for fr in th.get('frames',[])[:14]: print('  ', imgs[fr['imageIndex']].get('name','?'), fr.get('symbol','?'))
-except Exception as ex: print('could not parse', ex); print(t[1][:1500])
-" "$f"; done
+          for f in "$HOME"/Library/Logs/DiagnosticReports/Notch*; do
+            [ -f "$f" ] || continue
+            echo "=== $f"
+            grep -o -E '"(type|signal|indicator|symbol)" ?: ?"[^"]*"' "$f" | head -60 || head -c 2000 "$f"
+          done
+          echo "--- windows the app has on screen"
+          swift -e 'import CoreGraphics; import Foundation; let l = CGWindowListCopyWindowInfo([.optionAll], kCGNullWindowID) as! [[String: Any]]; for w in l where (w["kCGWindowOwnerName"] as? String) == "Notch" { print(w["kCGWindowBounds"] ?? "", "layer", w["kCGWindowLayer"] ?? "", "onscreen", w["kCGWindowIsOnscreen"] ?? "no", "alpha", w["kCGWindowAlpha"] ?? "") }' || true
           cd "$GITHUB_WORKSPACE" && mkdir -p shots && screencapture -x shots/after-zip.png || true
           tail -5 "$HOME/Library/Application Support/Notch/notch.log" || true
 
