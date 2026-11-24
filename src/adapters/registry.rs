@@ -4,7 +4,7 @@
 //! its process id, session id, folder, title and a live status that it rewrites whenever
 //! the status changes: "busy", "idle", or "waiting" (with what it is waiting for).
 //! This is the most reliable signal there is for *which sessions exist* and *whether one
-//! is waiting on the user*, and it needs no hooks. Notch watches the folder and turns
+//! is waiting on the user*, and it needs no hooks. AgentNotch watches the folder and turns
 //! every change into an event. Hooks and transcripts still add the detail (current step,
 //! subagents, the question a turn ended with).
 //!

@@ -27,7 +27,7 @@ jobs:
         working-directory: mac
         run: |
           mkdir -p shots
-          B=dist/Notch.app/Contents/MacOS/Notch
+          B=dist/AgentNotch.app/Contents/MacOS/AgentNotch
           "$B" --snapshot shots/collapsed.png
           "$B" --snapshot shots/expanded.png --expanded
           "$B" --snapshot shots/settings.png --settings
@@ -36,15 +36,15 @@ jobs:
       - name: Run the app and capture the screen
         working-directory: mac
         run: |
-          open -n dist/Notch.app --args --demo --expanded || true
+          open -n dist/AgentNotch.app --args --demo --expanded || true
           sleep 6
           screencapture -x shots/screen-expanded.png || true
-          pkill -x Notch || true
+          pkill -x AgentNotch || true
           sleep 1
-          open -n dist/Notch.app --args --demo || true
+          open -n dist/AgentNotch.app --args --demo || true
           sleep 5
           screencapture -x shots/screen-collapsed.png || true
-          pkill -x Notch || true
+          pkill -x AgentNotch || true
           ls -la shots
 
       - uses: actions/upload-artifact@v4
@@ -52,5 +52,5 @@ jobs:
         with:
           name: notch-mac
           path: |
-            mac/dist/Notch-mac.zip
+            mac/dist/AgentNotch-mac.zip
             mac/shots

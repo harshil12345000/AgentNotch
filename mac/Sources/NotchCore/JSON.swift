@@ -3,7 +3,7 @@ import Foundation
 /// A JSON value that keeps object keys in their original order.
 ///
 /// Foundation's JSON types lose key order, which would reshuffle a user's settings file
-/// every time Notch touched it. This small parser and printer keep it as the user wrote it.
+/// every time AgentNotch touched it. This small parser and printer keep it as the user wrote it.
 public indirect enum JSON: Equatable {
     case null
     case bool(Bool)

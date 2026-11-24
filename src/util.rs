@@ -10,18 +10,27 @@ pub fn home() -> PathBuf {
     PathBuf::from(std::env::var_os("USERPROFILE").unwrap_or_default())
 }
 
-/// %APPDATA%\Notch (config). Created on demand.
-pub fn config_dir() -> PathBuf {
-    let p = PathBuf::from(std::env::var_os("APPDATA").unwrap_or_default()).join("Notch");
-    let _ = std::fs::create_dir_all(&p);
-    p
+/// Our folder under the given base. A folder from before the rename (Notch) is taken
+/// over; if it cannot be moved right now (an old copy still has files open) it is used as
+/// it is and moved on a later start.
+fn named_dir(base: &str) -> PathBuf {
+    let root = PathBuf::from(std::env::var_os(base).unwrap_or_default());
+    let (new, old) = (root.join("AgentNotch"), root.join("Notch"));
+    if !new.exists() && old.is_dir() && std::fs::rename(&old, &new).is_err() {
+        return old;
+    }
+    let _ = std::fs::create_dir_all(&new);
+    new
 }
 
-/// %LOCALAPPDATA%\Notch (logs, runtime files). Created on demand.
+/// %APPDATA%\AgentNotch (config). Created on demand.
+pub fn config_dir() -> PathBuf {
+    named_dir("APPDATA")
+}
+
+/// %LOCALAPPDATA%\AgentNotch (logs, runtime files). Created on demand.
 pub fn data_dir() -> PathBuf {
-    let p = PathBuf::from(std::env::var_os("LOCALAPPDATA").unwrap_or_default()).join("Notch");
-    let _ = std::fs::create_dir_all(&p);
-    p
+    named_dir("LOCALAPPDATA")
 }
 
 /// Suffix that separates a test instance from the real one. Set NOTCH_INSTANCE=name to run
@@ -35,7 +44,7 @@ pub fn instance_suffix() -> String {
 }
 
 pub fn exe_path() -> PathBuf {
-    std::env::current_exe().unwrap_or_else(|_| PathBuf::from("notch.exe"))
+    std::env::current_exe().unwrap_or_else(|_| PathBuf::from("AgentNotch.exe"))
 }
 
 pub fn now_unix() -> u64 {

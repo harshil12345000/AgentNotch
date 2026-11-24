@@ -82,7 +82,7 @@ public enum UsageAPI {
             return result
         }
         if tok.expired {
-            // Notch never refreshes the token itself: it asks Claude Code to, which renews its own store.
+            // AgentNotch never refreshes the token itself: it asks Claude Code to, which renews its own store.
             _ = run("/bin/sh", ["-lc", "claude auth status"], timeout: 25)
             if let again = credentials(), let t2 = token(from: again) { tok = t2 }
             if tok.expired {

@@ -81,7 +81,7 @@ fn hold(on: bool) {
     }
 }
 
-/// Is anything on this PC (Notch or another app, such as the Claude desktop app's own
+/// Is anything on this PC (AgentNotch or another app, such as the Claude desktop app's own
 /// keep-awake setting) currently asking Windows not to sleep?
 pub fn system_held_awake() -> bool {
     unsafe {
@@ -97,7 +97,7 @@ pub fn lid_is_do_nothing() -> bool {
     read_lid() == Some((DO_NOTHING, DO_NOTHING))
 }
 
-/// True when Notch itself switched Keep Awake on (a journal with the old values exists).
+/// True when AgentNotch itself switched Keep Awake on (a journal with the old values exists).
 pub fn ours() -> bool {
     journal().exists()
 }
@@ -127,8 +127,8 @@ fn read_journal() -> Option<(u32, u32)> {
 ///
 /// `by_user` = the toggle was clicked: both plugged-in and battery must leave "do nothing",
 /// so each side goes back to its saved value, or to sleep (the Windows default) if that
-/// side was already "do nothing" before Notch touched it or there is nothing saved.
-/// Otherwise (Notch is quitting) the saved values are put back exactly as they were.
+/// side was already "do nothing" before AgentNotch touched it or there is nothing saved.
+/// Otherwise (AgentNotch is quitting) the saved values are put back exactly as they were.
 pub fn off_target(saved: Option<(u32, u32)>, by_user: bool) -> (u32, u32) {
     let (ac, dc) = saved.unwrap_or((SLEEP, SLEEP));
     if by_user {
@@ -150,7 +150,7 @@ pub fn disable(by_user: bool) -> Result<(), String> {
     Ok(())
 }
 
-/// Called at startup: a journal left behind means Notch did not exit cleanly while the
+/// Called at startup: a journal left behind means AgentNotch did not exit cleanly while the
 /// toggle was on. Restore the saved values.
 pub fn recover_after_crash() {
     if let Some((ac, dc)) = read_journal() {
@@ -168,7 +168,7 @@ mod tests {
 
     #[test]
     fn switching_off_changes_both_sides() {
-        // battery was already "do nothing" before Notch: a click still turns it off
+        // battery was already "do nothing" before AgentNotch: a click still turns it off
         assert_eq!(off_target(Some((SLEEP, DO_NOTHING)), true), (SLEEP, SLEEP));
         // other saved actions (2 = hibernate) come back as they were
         assert_eq!(off_target(Some((2, SLEEP)), true), (2, SLEEP));

@@ -1,5 +1,5 @@
 //! `--bench [seconds]`: log working set and CPU once a second, then a summary.
-//! Output goes to %LOCALAPPDATA%\Notch\logs\bench.log (and stdout when redirected).
+//! Output goes to %LOCALAPPDATA%\AgentNotch\logs\bench.log (and stdout when redirected).
 use std::io::Write;
 use std::time::Instant;
 use windows::Win32::Foundation::FILETIME;

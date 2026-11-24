@@ -1,4 +1,4 @@
-//! Install / uninstall Notch's hooks in a Claude Code settings.json.
+//! Install / uninstall AgentNotch's hooks in a Claude Code settings.json.
 //!
 //! Rules: never overwrite or reorder the user's own hooks, back the file up before the
 //! first change, and make uninstall put the file back byte for byte when nothing else
@@ -172,7 +172,7 @@ pub fn install(t: &Target) -> Result<String, String> {
         Some(b) => parse(b)?,
         None => Value::Object(Map::new()),
     };
-    // keep the first backup: it is the file as it was before Notch ever touched it
+    // keep the first backup: it is the file as it was before AgentNotch ever touched it
     let (bak, absent) = (backup_path(&t.settings), absent_path(&t.settings));
     if !bak.exists() && !absent.exists() {
         match &original {
@@ -207,7 +207,7 @@ pub fn uninstall(settings: &Path) -> Result<String, String> {
     };
     let mut root = parse(&current)?;
     if !strip(&mut root) {
-        return Ok("Notch hooks are not installed: nothing to remove.".into());
+        return Ok("AgentNotch hooks are not installed: nothing to remove.".into());
     }
     let mut note = "Hooks removed.";
     if absent.exists() && root.as_object().map(|o| o.is_empty()).unwrap_or(false) {
@@ -239,7 +239,7 @@ mod tests {
         d.join("settings.json")
     }
     fn target(p: &Path) -> Target {
-        Target { settings: p.to_path_buf(), command: "C:/Tools/notch.exe".into(), args: vec!["--hook".into()], events: &HOOK_EVENTS, exec_form: true }
+        Target { settings: p.to_path_buf(), command: "C:/Tools/AgentNotch.exe".into(), args: vec!["--hook".into()], events: &HOOK_EVENTS, exec_form: true }
     }
 
     const ORIGINAL: &str = "{\r\n    \"permissions\": {\"allow\": [\"Bash(ls)\"]},\r\n    \"hooks\": {\r\n        \"PreToolUse\": [{\"matcher\": \"Bash\", \"hooks\": [{\"type\": \"command\", \"command\": \"node guard.mjs\", \"timeout\": 10}]}]\r\n    },\r\n    \"zeta\": 1\r\n}";
@@ -297,11 +297,11 @@ mod tests {
         let p = tmp("codex");
         let original = "{\n  \"hooks\": {\n    \"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"curl.exe -s http://127.0.0.1:1/x\"}]}]\n  }\n}\n";
         std::fs::write(&p, original).unwrap();
-        let t = Target { settings: p.clone(), command: "C:/Tools/notch.exe".into(), args: vec!["--hook".into(), "--agent".into(), "codex".into()], events: &["Stop", "PermissionRequest"], exec_form: false };
+        let t = Target { settings: p.clone(), command: "C:/Tools/AgentNotch.exe".into(), args: vec!["--hook".into(), "--agent".into(), "codex".into()], events: &["Stop", "PermissionRequest"], exec_form: false };
         install(&t).unwrap();
         let v: Value = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
         assert_eq!(v["hooks"]["Stop"].as_array().unwrap().len(), 2);
-        assert_eq!(v["hooks"]["Stop"][1]["hooks"][0]["command"], "\"C:/Tools/notch.exe\" --hook --agent codex");
+        assert_eq!(v["hooks"]["Stop"][1]["hooks"][0]["command"], "\"C:/Tools/AgentNotch.exe\" --hook --agent codex");
         assert!(installed(&p));
         uninstall(&p).unwrap();
         assert_eq!(std::fs::read(&p).unwrap(), original.as_bytes());

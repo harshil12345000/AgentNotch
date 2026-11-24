@@ -1,5 +1,5 @@
 #![windows_subsystem = "windows"]
-//! Notch: a tiny always-on-top island for AI coding agent sessions.
+//! AgentNotch: a tiny always-on-top island for AI coding agent sessions.
 mod adapters;
 mod app;
 mod bench;
@@ -29,24 +29,24 @@ mod watch;
 mod winutil;
 mod wsl;
 
-const HELP: &str = "Notch - a tiny island for AI coding agent sessions
+const HELP: &str = "AgentNotch - a tiny island for AI coding agent sessions
 
-  notch.exe                         start the island
-  notch.exe --install               copy to %LOCALAPPDATA%\\Programs\\Notch, add Desktop and Start Menu shortcuts, start it
-  notch.exe --uninstall             remove the shortcuts and the Start with Windows entry
-  notch.exe --bench [secs]          log working set and CPU every second (default 60), then exit
+  AgentNotch.exe                         start the island
+  AgentNotch.exe --install               copy to %LOCALAPPDATA%\\Programs\\AgentNotch, add Desktop and Start Menu shortcuts, start it
+  AgentNotch.exe --uninstall             remove the shortcuts and the Start with Windows entry
+  AgentNotch.exe --bench [secs]          log working set and CPU every second (default 60), then exit
             [--expanded] [--demo]   ... with the panel open / with five demo sessions
-  notch.exe --install-hooks         add Notch hooks to ~/.claude/settings.json (backup first)
-  notch.exe --uninstall-hooks       remove them again
-  notch.exe --hooks-status          say whether they are installed
+  AgentNotch.exe --install-hooks         add AgentNotch hooks to ~/.claude/settings.json (backup first)
+  AgentNotch.exe --uninstall-hooks       remove them again
+  AgentNotch.exe --hooks-status          say whether they are installed
             [--settings <file>]     ... act on another settings.json
             [--wsl <distro>]        ... act on a running WSL distro
             [--codex]               ... act on Codex (~/.codex/hooks.json) instead of Claude Code
-  notch.exe --status                print what Notch detects (lid action, keep-awake, Remote Control, hooks)
-  notch.exe --decide <session> allow|deny   answer a pending permission request
-  notch.exe --quit                  ask the running island to exit (restores power settings)
-  notch.exe --hook                  (used by the hooks) forward stdin JSON to the island
-  notch.exe --snapshot <file.bmp>   render the UI with demo data to a bitmap [--expanded|--settings]
+  AgentNotch.exe --status                print what AgentNotch detects (lid action, keep-awake, Remote Control, hooks)
+  AgentNotch.exe --decide <session> allow|deny   answer a pending permission request
+  AgentNotch.exe --quit                  ask the running island to exit (restores power settings)
+  AgentNotch.exe --hook                  (used by the hooks) forward stdin JSON to the island
+  AgentNotch.exe --snapshot <file.bmp>   render the UI with demo data to a bitmap [--expanded|--settings]
 ";
 
 fn main() {
@@ -103,8 +103,8 @@ fn main() {
             None => println!("lid close action:   could not be read"),
         }
         println!("held awake by an app: {}", power::system_held_awake());
-        println!("keep awake by Notch: {}", power::ours());
-        println!("remote control:      started by Notch = {}, running elsewhere = {}", rc::our_pid().is_some(), rc::external_running());
+        println!("keep awake by AgentNotch: {}", power::ours());
+        println!("remote control:      started by AgentNotch = {}, running elsewhere = {}", rc::our_pid().is_some(), rc::external_running());
         println!("claude sessions:     {}", adapters::registry::status_line());
         println!("t3 code:             {}", adapters::t3code::status());
         let codex_hooks = adapters::codex::codex_home().join("hooks.json");

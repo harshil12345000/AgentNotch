@@ -3,6 +3,10 @@ name = "notch"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "AgentNotch"
+path = "src/main.rs"
+
 [dependencies]
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.154", features = ["preserve_order"] }

@@ -2,7 +2,7 @@
 //!
 //! T3 Code has no hook or notify mechanism, so this reads its own state: the SQLite
 //! database at ~/.t3/userdata/statev2.sqlite (event-sourced, with projection tables).
-//! Notch opens it read-only whenever the file changes and turns each thread's latest run
+//! AgentNotch opens it read-only whenever the file changes and turns each thread's latest run
 //! into a session. Table and column names were checked against a real database
 //! (T3 Code, November 2026); if a later version changes them the query simply fails and
 //! this adapter stays quiet.
@@ -68,7 +68,7 @@ fn load() -> Option<Vec<Run>> {
     )
 }
 
-/// One line for `notch.exe --status`.
+/// One line for `AgentNotch.exe --status`.
 pub fn status() -> String {
     if !userdata_dir().join(DB).is_file() {
         return "not installed".into();

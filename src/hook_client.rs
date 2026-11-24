@@ -1,4 +1,4 @@
-//! `notch.exe --hook`: read the hook JSON from stdin, forward it to the island, exit 0.
+//! `AgentNotch.exe --hook`: read the hook JSON from stdin, forward it to the island, exit 0.
 //! Runs before any window or graphics setup, prints nothing, and never fails the caller.
 use std::io::Read;
 
@@ -46,7 +46,7 @@ pub fn run(args: &[String]) {
         // process because the prompt was answered somewhere else.
         let out = match reply.wait(std::time::Duration::from_secs(590)).as_deref() {
             Some("allow") => Some(r#"{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}"#),
-            Some("deny") => Some(r#"{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny","message":"Denied from Notch"}}}"#),
+            Some("deny") => Some(r#"{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny","message":"Denied from AgentNotch"}}}"#),
             _ => None, // "pass" or nothing: leave the decision to Claude Code's own prompt
         };
         if let Some(json) = out {

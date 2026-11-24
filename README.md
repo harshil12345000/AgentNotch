@@ -1,8 +1,8 @@
-# Notch
+# AgentNotch
 
 **A tiny notch for Windows and macOS that shows your AI coding agents at a glance.**
 
-Notch sits flush against a screen edge, opens when you hover it, and tells you which
+AgentNotch sits flush against a screen edge, opens when you hover it, and tells you which
 sessions are working, which are waiting on you, and which have finished. It follows Claude
 Code (terminal and desktop app), Codex and T3 Code, shows your usage limits, and lets you
 approve a permission request without switching windows.
@@ -11,11 +11,11 @@ Native on both platforms (Rust and Direct2D on Windows, Swift on macOS), about 1
 nothing to set up: on first launch it installs itself and connects to the agents it finds.
 No telemetry.
 
-[**Website**](https://agentnotch-six.vercel.app) · [**Download for Windows**](https://github.com/harshil12345000/AgentNotch/releases/latest/download/notch.exe) · [**Download for Mac**](https://github.com/harshil12345000/AgentNotch/releases/latest/download/Notch-mac.zip) · [Releases](https://github.com/harshil12345000/AgentNotch/releases)
+[**Website**](https://agentnotch-six.vercel.app) · [**Download for Windows**](https://github.com/harshil12345000/AgentNotch/releases/latest/download/AgentNotch.exe) · [**Download for Mac**](https://github.com/harshil12345000/AgentNotch/releases/latest/download/AgentNotch-mac.zip) · [Releases](https://github.com/harshil12345000/AgentNotch/releases)
 
-![Notch open at the top of the screen, with the side tab on the right edge](docs/screenshots/hero.png)
+![AgentNotch open at the top of the screen, with the side tab on the right edge](docs/screenshots/hero.png)
 
-> Screenshots are rendered by Notch itself from demo data (`notch.exe --snapshot`).
+> Screenshots are rendered by AgentNotch itself from demo data (`AgentNotch.exe --snapshot`).
 
 ## Contents
 
@@ -71,20 +71,20 @@ No telemetry.
 
 ## Install
 
-There is nothing to configure. On first launch Notch installs itself, connects to the
+There is nothing to configure. On first launch AgentNotch installs itself, connects to the
 agents it finds, and starts with your computer.
 
 ### Windows 10 and 11
 
-Download [`notch.exe`](https://github.com/harshil12345000/AgentNotch/releases/latest/download/notch.exe)
+Download [`AgentNotch.exe`](https://github.com/harshil12345000/AgentNotch/releases/latest/download/AgentNotch.exe)
 and double-click it.
 
-It copies itself to `%LOCALAPPDATA%\Programs\Notch`, adds a **Notch** shortcut to the
+It copies itself to `%LOCALAPPDATA%\Programs\AgentNotch`, adds a **AgentNotch** shortcut to the
 Desktop and the Start Menu, and starts. No administrator rights are needed. The exe is not
 code-signed, so SmartScreen may warn the first time: choose **More info**, then
 **Run anyway**.
 
-To pin it to the taskbar, right-click the Notch shortcut and choose **Pin to taskbar**
+To pin it to the taskbar, right-click the AgentNotch shortcut and choose **Pin to taskbar**
 (Windows does not let an app pin itself).
 
 ### macOS 13 or later
@@ -96,22 +96,22 @@ curl -fsSL https://agentnotch-six.vercel.app/install.sh | sh
 ```
 
 It downloads the app into `~/Applications` and starts it. Or download
-[`Notch-mac.zip`](https://github.com/harshil12345000/AgentNotch/releases/latest/download/Notch-mac.zip),
-unzip it and open Notch; it then moves itself to `~/Applications`. The app is not
+[`AgentNotch-mac.zip`](https://github.com/harshil12345000/AgentNotch/releases/latest/download/AgentNotch-mac.zip),
+unzip it and open AgentNotch; it then moves itself to `~/Applications`. The app is not
 notarized by Apple, so opening a browser download needs your approval the first time:
 right-click the app and choose **Open** (on newer macOS: System Settings > Privacy &
 Security > **Open Anyway**). The Terminal command avoids that prompt.
 
 ### What first launch does
 
-- **Claude Code:** adds Notch's hooks to `~/.claude/settings.json`, if Claude Code is
+- **Claude Code:** adds AgentNotch's hooks to `~/.claude/settings.json`, if Claude Code is
   installed. See [Claude Code hooks](#claude-code-hooks): your own hooks stay first and
   untouched, a backup is saved, and removing the hooks restores the file exactly.
 - **Codex:** the same for `~/.codex/hooks.json`, if Codex is installed. Codex asks you
   once to review and trust new hooks (`/hooks`).
-- **T3 Code** needs nothing: Notch reads its state directly.
+- **T3 Code** needs nothing: AgentNotch reads its state directly.
 - **Start with the computer:** switched on. Switch it off from the tray or menu bar icon.
-- **macOS only:** the first time you open the panel, the system asks once to let Notch
+- **macOS only:** the first time you open the panel, the system asks once to let AgentNotch
   read your Claude sign-in from the Keychain, which the usage limits need. Decline and
   everything else still works.
 
@@ -120,12 +120,12 @@ sessions. Sessions that were already running pick the hooks up when they are nex
 
 ### Remove
 
-Windows: `notch.exe --uninstall-hooks`, `notch.exe --uninstall-hooks --codex`,
-`notch.exe --uninstall`, then delete `%LOCALAPPDATA%\Programs\Notch` and `%APPDATA%\Notch`.
+Windows: `AgentNotch.exe --uninstall-hooks`, `AgentNotch.exe --uninstall-hooks --codex`,
+`AgentNotch.exe --uninstall`, then delete `%LOCALAPPDATA%\Programs\AgentNotch` and `%APPDATA%\AgentNotch`.
 
-macOS: `~/Applications/Notch.app/Contents/MacOS/Notch --uninstall-hooks` (and again with
-`--codex`), quit Notch, then delete `~/Applications/Notch.app` and
-`~/Library/Application Support/Notch`.
+macOS: `~/Applications/AgentNotch.app/Contents/MacOS/AgentNotch --uninstall-hooks` (and again with
+`--codex`), quit AgentNotch, then delete `~/Applications/AgentNotch.app` and
+`~/Library/Application Support/AgentNotch`.
 
 ### The Mac version
 
@@ -140,7 +140,7 @@ tracking logic. Differences from Windows today:
 - Travel Mode's reminder button opens Wi-Fi settings.
 - Agent badges are letters rather than logos, and the hotkey is fixed at Ctrl+\.
 
-![Notch on macOS](docs/screenshots/mac-expanded.png)
+![AgentNotch on macOS](docs/screenshots/mac-expanded.png)
 
 ## Using it
 
@@ -160,7 +160,7 @@ Every open Claude Code session stays listed, working or idle, for as long as its
 lives. Finished sessions from other agents leave after 2 minutes (Settings: "Keep finished
 sessions").
 
-Config lives in `%APPDATA%\Notch\config.toml`, logs in `%LOCALAPPDATA%\Notch\logs` (two
+Config lives in `%APPDATA%\AgentNotch\config.toml`, logs in `%LOCALAPPDATA%\AgentNotch\logs` (two
 files of at most 2 MB). Nothing leaves your machine except the usage request described
 under [Usage limits](#usage-limits).
 
@@ -179,7 +179,7 @@ Three sources, most trusted first:
    folder: the current step for sessions without hooks, the end of a turn (a second
    witness if a hook is missed), and every running subagent.
 
-Notch reads only what was appended to a file since it last looked, and is driven by file
+AgentNotch reads only what was appended to a file since it last looked, and is driven by file
 change notifications rather than polling.
 
 These file layouts are internal to Claude Code and can change with an update. Each source
@@ -188,9 +188,9 @@ Checked against Claude Code 2.1.319 and 2.1.325.
 
 ## Claude Code hooks
 
-Hooks make sessions update the instant something happens. Notch installs them on first
+Hooks make sessions update the instant something happens. AgentNotch installs them on first
 launch; you can also do it from Settings > "Claude Code hooks" or with
-`notch.exe --install-hooks`.
+`AgentNotch.exe --install-hooks`.
 
 What this does to `~/.claude/settings.json`:
 
@@ -199,13 +199,13 @@ What this does to `~/.claude/settings.json`:
   removed or reordered. Events: SessionStart, UserPromptSubmit, PreToolUse, PostToolUse,
   PostToolUseFailure, PermissionRequest, Notification, Stop, StopFailure, SubagentStart,
   SubagentStop, PreCompact, SessionEnd.
-- Each entry runs `notch.exe --hook` with `"async": true`, so Claude Code never waits for
+- Each entry runs `AgentNotch.exe --hook` with `"async": true`, so Claude Code never waits for
   it. The helper forwards the hook's JSON over a local named pipe (`\\.\pipe\notch`) and
-  exits. If Notch is not running it exits immediately. The one exception is
+  exits. If AgentNotch is not running it exits immediately. The one exception is
   PermissionRequest, which waits so it can carry your answer back (next section).
 
-They are installed automatically on first launch. Uninstalling (`notch.exe --uninstall-hooks`, or Settings) restores the file byte for byte
-from the backup if you changed nothing else in the meantime; otherwise only Notch's entries
+They are installed automatically on first launch. Uninstalling (`AgentNotch.exe --uninstall-hooks`, or Settings) restores the file byte for byte
+from the backup if you changed nothing else in the meantime; otherwise only AgentNotch's entries
 are removed.
 
 The hooks store the path of the exe: if you move it, run `--install-hooks` again. Sessions
@@ -224,41 +224,41 @@ your Claude settings still win over an Approve.
 - Not offered for terminal sessions by default, because it is not documented whether
   Claude Code shows its own prompt while a hook is still deciding. Set
   `approve_in_terminal = true` in the config to try it.
-- If you answer in Claude instead, Notch releases the hook and the buttons disappear.
+- If you answer in Claude instead, AgentNotch releases the hook and the buttons disappear.
 - Settings > "Approve / deny from the notch" switches the feature off.
 
 ## Codex, T3 Code and WSL
 
-**Codex.** `notch.exe --install-hooks --codex` adds entries to `~/.codex/hooks.json` next
+**Codex.** `AgentNotch.exe --install-hooks --codex` adds entries to `~/.codex/hooks.json` next
 to any hooks already there (same merge, backup and byte-exact uninstall). Codex then asks
 you to review and trust them (`/hooks`). Rollout files under `~/.codex/sessions` are
 followed as a fallback, but they do not record approval requests, and Codex builds that
 keep sessions in a database write none.
 
-**T3 Code** has no hooks. Notch reads its state database
+**T3 Code** has no hooks. AgentNotch reads its state database
 (`~/.t3/userdata/statev2.sqlite`) read-only, through the SQLite that ships with Windows,
 each time it changes. Each thread's latest run becomes a session. Individual tool calls
 inside a run are not shown.
 
-**WSL.** Start the distro, then `notch.exe --install-hooks --wsl <distro>`. The hook runs
-the Windows exe through WSL interop. Notch never boots a distro itself. Set
+**WSL.** Start the distro, then `AgentNotch.exe --install-hooks --wsl <distro>`. The hook runs
+the Windows exe through WSL interop. AgentNotch never boots a distro itself. Set
 `[wsl] enabled = true` to read running WSL sessions at startup.
 
 Gemini CLI, Cursor agent and OpenCode are stubs: see [Adding an adapter](#adding-an-adapter).
 
 ## Usage limits
 
-Notch shows the same figures as Claude Code's `/usage`: percent used for the 5-hour and
+AgentNotch shows the same figures as Claude Code's `/usage`: percent used for the 5-hour and
 weekly windows, and the time until each resets. Under 60% is neutral, 60 to 90% amber,
 over 90% red.
 
 - The numbers come from `https://api.anthropic.com/api/oauth/usage`, using the sign-in
-  Claude Code keeps in `~/.claude/.credentials.json`. Notch only reads that file. The
+  Claude Code keeps in `~/.claude/.credentials.json`. AgentNotch only reads that file. The
   token is sent only to api.anthropic.com and is never logged, stored or shown.
-- If that sign-in has expired, Notch does not refresh it itself. It runs
+- If that sign-in has expired, AgentNotch does not refresh it itself. It runs
   `claude auth status` in the background, at most once every 20 minutes, so that Claude
   Code renews its own file.
-- The endpoint is undocumented and rate-limits readily. Notch asks at most every 5 minutes
+- The endpoint is undocumented and rate-limits readily. AgentNotch asks at most every 5 minutes
   (and when you open the panel, at most once a minute), never while the PC is locked or
   idle, and keeps the last real numbers on screen with their age rather than replace them
   with an error.
@@ -268,8 +268,8 @@ over 90% red.
 **Remote Control** opens a terminal tab in a project folder and runs
 `claude remote-control`, so you can continue a session from your phone or the web. Click
 again to stop it. It shows "On, already running" when Remote Control is active without
-Notch having started it (for example the desktop app's "Connect new sessions to Remote
-Control"); Notch cannot stop those.
+AgentNotch having started it (for example the desktop app's "Connect new sessions to Remote
+Control"); AgentNotch cannot stop those.
 
 **Keep Awake** sets "when I close the lid: do nothing" for both plugged in and battery, and
 holds the system and display awake. The previous values are saved first. Once on it stays
@@ -300,22 +300,22 @@ redraws only when something changes, a pulse that repaints just the dots, timers
 when there is nothing to animate, and graphics libraries that are not even loaded when the
 exe runs as a hook helper.
 
-Run it yourself with `notch.exe --bench` (60 seconds, one line a second, written to
-`%LOCALAPPDATA%\Notch\logs\bench.log`).
+Run it yourself with `AgentNotch.exe --bench` (60 seconds, one line a second, written to
+`%LOCALAPPDATA%\AgentNotch\logs\bench.log`).
 
 ## Command line
 
 ```
-notch.exe                       start
-notch.exe --install             install to %LOCALAPPDATA%\Programs\Notch with shortcuts, and start
-notch.exe --uninstall           remove the shortcuts and the Start-with-Windows entry
-notch.exe --status              what Notch detects: sessions, hooks, lid action, Remote Control
-notch.exe --quit                ask the running notch to exit
-notch.exe --install-hooks       add the hooks              [--codex] [--wsl <distro>] [--settings <file>]
-notch.exe --uninstall-hooks     remove them
-notch.exe --decide <session> allow|deny     answer a pending permission request
-notch.exe --bench [secs]        log working set and CPU every second     [--expanded] [--demo]
-notch.exe --snapshot f.bmp      render the UI with demo data             [--expanded] [--settings] [--edge top|bottom|left|right]
+AgentNotch.exe                       start
+AgentNotch.exe --install             install to %LOCALAPPDATA%\Programs\AgentNotch with shortcuts, and start
+AgentNotch.exe --uninstall           remove the shortcuts and the Start-with-Windows entry
+AgentNotch.exe --status              what AgentNotch detects: sessions, hooks, lid action, Remote Control
+AgentNotch.exe --quit                ask the running notch to exit
+AgentNotch.exe --install-hooks       add the hooks              [--codex] [--wsl <distro>] [--settings <file>]
+AgentNotch.exe --uninstall-hooks     remove them
+AgentNotch.exe --decide <session> allow|deny     answer a pending permission request
+AgentNotch.exe --bench [secs]        log working set and CPU every second     [--expanded] [--demo]
+AgentNotch.exe --snapshot f.bmp      render the UI with demo data             [--expanded] [--settings] [--edge top|bottom|left|right]
 ```
 
 Set `NOTCH_INSTANCE=name` to run a second, isolated notch next to the real one for testing.
@@ -329,7 +329,7 @@ git clone https://github.com/harshil12345000/AgentNotch
 cd AgentNotch
 cargo build --release
 cargo test --release
-target\release\notch.exe --install
+target\release\AgentNotch.exe --install
 ```
 
 macOS (Xcode command line tools, Swift 5.9 or later):
@@ -337,7 +337,7 @@ macOS (Xcode command line tools, Swift 5.9 or later):
 ```
 cd AgentNotch/mac
 swift test
-./bundle.sh          # builds dist/Notch.app (Apple silicon + Intel) and dist/Notch-mac.zip
+./bundle.sh          # builds dist/AgentNotch.app (Apple silicon + Intel) and dist/AgentNotch-mac.zip
 ```
 
 Every push that touches `mac/` is built, tested and screenshotted on a Mac by
@@ -351,7 +351,7 @@ Every push that touches `mac/` is built, tested and screenshotted on a Mac by
    that watches files and posts events; `watch::watch_dir` and `watch::Tailer` do the file
    work).
 2. Register it in `REGISTRY` in `src/adapters/mod.rs`.
-3. If the agent can run a program on events, point it at `notch.exe --hook --agent <id>`.
+3. If the agent can run a program on events, point it at `AgentNotch.exe --hook --agent <id>`.
 
 Every event carries a session id, agent, project folder, optional title and process ids,
 and one of: `SessionStarted`, `Working{step}`, `NeedsInput{reason}`, `Done`, `Error`,
@@ -402,4 +402,4 @@ Not verified (Windows):
 - Agent logos from [thesvg.org](https://thesvg.org), in `assets/logos`. The marks belong
   to their owners and are used only to identify each agent.
 
-Notch is an independent project and is not affiliated with Anthropic, OpenAI or T3.
+AgentNotch is an independent project and is not affiliated with Anthropic, OpenAI or T3.

@@ -106,15 +106,26 @@ pub fn reg_delete_value(path: &str, name: &str) {
 
 const RUN_KEY: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 
+const RUN_NAME: &str = "AgentNotch";
+/// The entry's name before the rename.
+const RUN_NAME_OLD: &str = "Notch";
+
 pub fn autostart_enabled() -> bool {
-    reg_get_string(RUN_KEY, "Notch").is_some()
+    reg_get_string(RUN_KEY, RUN_NAME).is_some() || reg_get_string(RUN_KEY, RUN_NAME_OLD).is_some()
+}
+
+/// Start `exe` with Windows.
+pub fn set_autostart_to(exe: &std::path::Path) {
+    reg_set_string(RUN_KEY, RUN_NAME, &format!("\"{}\"", exe.display()));
+    reg_delete_value(RUN_KEY, RUN_NAME_OLD);
 }
 
 pub fn set_autostart(on: bool) {
     if on {
-        reg_set_string(RUN_KEY, "Notch", &format!("\"{}\"", crate::util::exe_path().display()));
+        set_autostart_to(&crate::util::exe_path());
     } else {
-        reg_delete_value(RUN_KEY, "Notch");
+        reg_delete_value(RUN_KEY, RUN_NAME);
+        reg_delete_value(RUN_KEY, RUN_NAME_OLD);
     }
 }
 
@@ -243,7 +254,7 @@ pub fn allow_running_instance_foreground() {
 }
 
 pub fn window_title() -> String {
-    format!("Notch{}", crate::util::instance_suffix())
+    format!("AgentNotch{}", crate::util::instance_suffix())
 }
 
 /// Ask an already running island to close cleanly.

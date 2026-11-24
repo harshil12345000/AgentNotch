@@ -56,11 +56,16 @@ public func recentFiles(_ dir: URL, depth: Int, maxAge: TimeInterval, _ pred: (U
     return out
 }
 
-/// Where Notch keeps its own files.
+/// Where AgentNotch keeps its own files.
 public enum Paths {
     public static var support: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? FileManager.default.homeDirectoryForCurrentUser
-        let dir = base.appendingPathComponent("Notch")
+        let dir = base.appendingPathComponent("AgentNotch")
+        // take over the folder from before the rename
+        let old = base.appendingPathComponent("Notch")
+        if !FileManager.default.fileExists(atPath: dir.path), FileManager.default.fileExists(atPath: old.path) {
+            try? FileManager.default.moveItem(at: old, to: dir)
+        }
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }

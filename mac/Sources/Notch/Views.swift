@@ -278,7 +278,7 @@ struct PanelView: View {
     private var title: String {
         if state.showSettings { return "Settings" }
         let (n, active) = (state.store.sessions.count, state.store.activeCount)
-        if n == 0 { return "Notch" }
+        if n == 0 { return "AgentNotch" }
         if active == 0 { return n == 1 ? "1 session, idle" : "\(n) sessions, idle" }
         return active == 1 ? "1 active session" : "\(active) active sessions"
     }
@@ -346,7 +346,7 @@ struct PanelView: View {
             }) {
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Show Claude usage limits").font(.ui(12, .semibold)).foregroundColor(.white)
-                    Text("macOS will ask once to let Notch read your Claude sign-in").font(.ui(11)).foregroundColor(Palette.dim)
+                    Text("macOS will ask once to let AgentNotch read your Claude sign-in").font(.ui(11)).foregroundColor(Palette.dim)
                 }.frame(maxWidth: .infinity, alignment: .leading).frame(height: 40)
             }.buttonStyle(.plain)
         } else if state.usage.hasNumbers {
@@ -396,7 +396,7 @@ struct PanelView: View {
             }.padding(.horizontal, 10).frame(height: 28)
             HStack {
                 Spacer()
-                Button(action: actions.quit) { Text("Quit Notch").font(.ui(11)).foregroundColor(Palette.dim) }.buttonStyle(.plain)
+                Button(action: actions.quit) { Text("Quit AgentNotch").font(.ui(11)).foregroundColor(Palette.dim) }.buttonStyle(.plain)
             }.padding(.horizontal, 10).frame(height: 26)
         }
     }

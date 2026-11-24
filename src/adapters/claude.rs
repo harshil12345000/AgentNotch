@@ -10,7 +10,7 @@ use crate::util::{base_name, clip};
 
 pub struct Claude;
 
-/// The hook events Notch registers for.
+/// The hook events AgentNotch registers for.
 pub const HOOK_EVENTS: [&str; 13] = [
     "SessionStart",
     "UserPromptSubmit",

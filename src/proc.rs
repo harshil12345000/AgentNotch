@@ -29,7 +29,7 @@ pub fn table() -> HashMap<u32, (u32, String)> {
     map
 }
 
-const SHELLS: [&str; 9] = ["bash.exe", "sh.exe", "cmd.exe", "powershell.exe", "pwsh.exe", "conhost.exe", "env.exe", "notch.exe", "openconsole.exe"];
+const SHELLS: [&str; 10] = ["bash.exe", "sh.exe", "cmd.exe", "powershell.exe", "pwsh.exe", "conhost.exe", "env.exe", "notch.exe", "agentAgentNotch.exe", "openconsole.exe"];
 
 /// Ancestors of this process, nearest first, with the short-lived shells that sit between a
 /// hook and the agent removed from the front. The first entry is the agent process.

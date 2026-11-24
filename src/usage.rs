@@ -141,7 +141,7 @@ fn expired(o: &OAuth) -> bool {
 }
 
 /// The saved login goes stale when Claude Code has not been used from a terminal for a
-/// while (for example when sessions run from the desktop app). Notch never refreshes or
+/// while (for example when sessions run from the desktop app). AgentNotch never refreshes or
 /// writes the token itself: it asks Claude Code to, by running `claude auth status`, which
 /// renews its own credentials file. Output is discarded. At most once every 20 minutes.
 fn ask_claude_to_refresh() {

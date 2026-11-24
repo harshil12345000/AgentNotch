@@ -2,9 +2,9 @@
 //!
 //! Live signals, best first:
 //!  1. Codex hooks (~/.codex/hooks.json, same shape as Claude Code's). Installed with
-//!     `notch.exe --install-hooks --codex`; Codex then asks you to review and trust them
+//!     `AgentNotch.exe --install-hooks --codex`; Codex then asks you to review and trust them
 //!     (`/hooks`) before they run. This is the only way to see approval requests.
-//!  2. Codex `notify` (legacy, turn-complete only): `notch.exe --codex-notify <json>`.
+//!  2. Codex `notify` (legacy, turn-complete only): `AgentNotch.exe --codex-notify <json>`.
 //!  3. Rollout files under ~/.codex/sessions (tailed). Approvals are not written there,
 //!     and newer Codex builds may keep sessions in a database instead, in which case
 //!     this source sees nothing.

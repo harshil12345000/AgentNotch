@@ -1,5 +1,5 @@
 //! Claude Code transcript watcher: fallback and backfill for sessions that have no hooks
-//! (or that started before Notch did).
+//! (or that started before AgentNotch did).
 //!
 //! Watches ~/.claude/projects/<project>/<session>.jsonl and reads only appended bytes.
 //! The line format is internal to Claude Code and may change between versions, so every

@@ -28,7 +28,7 @@ func runTool(_ path: String, _ args: [String], timeout: TimeInterval = 10) -> St
 /// Keep Awake: hold the Mac and its display awake, and stop a closed lid from sleeping it.
 ///
 /// Idle sleep is prevented with a power assertion (no privileges needed, released when
-/// Notch quits). Sleeping on lid close can only be switched off system-wide with
+/// AgentNotch quits). Sleeping on lid close can only be switched off system-wide with
 /// `pmset disablesleep`, which needs an administrator password; macOS asks for it.
 enum KeepAwake {
     private static var assertion: IOPMAssertionID = 0
@@ -36,7 +36,7 @@ enum KeepAwake {
 
     static func hold(_ on: Bool) {
         if on, !held {
-            let r = IOPMAssertionCreateWithName(kIOPMAssertPreventUserIdleDisplaySleep as CFString, IOPMAssertionLevel(kIOPMAssertionLevelOn), "Notch Keep Awake" as CFString, &assertion)
+            let r = IOPMAssertionCreateWithName(kIOPMAssertPreventUserIdleDisplaySleep as CFString, IOPMAssertionLevel(kIOPMAssertionLevelOn), "AgentNotch Keep Awake" as CFString, &assertion)
             held = r == kIOReturnSuccess
         } else if !on, held {
             IOPMAssertionRelease(assertion)

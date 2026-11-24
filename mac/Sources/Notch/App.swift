@@ -378,7 +378,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         state.hooksInstalled = Hooks.installed(Hooks.claudeSettings)
     }
 
-    /// Connect to the agents on this Mac with no questions asked: add Notch's hooks to
+    /// Connect to the agents on this Mac with no questions asked: add AgentNotch's hooks to
     /// Claude Code and Codex (after any existing hooks, with a backup, removable in
     /// Settings) and start at login. Done once; after that only a moved app is repaired.
     private func autoSetup() {
@@ -428,14 +428,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func buildStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        item.button?.image = NSImage(systemSymbolName: "rectangle.topthird.inset.filled", accessibilityDescription: "Notch")
+        item.button?.image = NSImage(systemSymbolName: "rectangle.topthird.inset.filled", accessibilityDescription: "AgentNotch")
         let menu = NSMenu()
         menu.addItem(withTitle: "Show / Hide", action: #selector(menuToggle), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Clear finished sessions", action: #selector(menuClear), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Travel mode", action: #selector(menuTravel), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Start at login", action: #selector(menuLogin), keyEquivalent: "").target = self
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Quit Notch", action: #selector(menuQuit), keyEquivalent: "q").target = self
+        menu.addItem(withTitle: "Quit AgentNotch", action: #selector(menuQuit), keyEquivalent: "q").target = self
         item.menu = menu
         statusItem = item
     }
@@ -456,7 +456,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 /// A downloaded app runs from a temporary, read-only location until it is moved. Hooks and
-/// "start at login" need a path that stays put, so on first launch Notch copies itself to
+/// "start at login" need a path that stays put, so on first launch AgentNotch copies itself to
 /// ~/Applications and continues from there.
 enum SelfInstall {
     static func relocateIfNeeded() -> Bool {
@@ -465,12 +465,15 @@ enum SelfInstall {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         if bundle.hasPrefix("/Applications/") || bundle.hasPrefix(home + "/Applications/") { return false }
         let dir = home + "/Applications"
-        let dest = dir + "/Notch.app"
+        let dest = dir + "/AgentNotch.app"
         try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
         // quit a copy that is already running from there, so it can be replaced
         _ = CLI.control(.object([.init("quit", .bool(true))]))
         Thread.sleep(forTimeInterval: 0.6)
         try? FileManager.default.removeItem(atPath: dest)
+        // a copy from before the rename
+        _ = runTool("/usr/bin/pkill", ["-x", "Notch"])
+        try? FileManager.default.removeItem(atPath: dir + "/Notch.app")
         guard runTool("/usr/bin/ditto", [bundle, dest], timeout: 60) != nil else {
             logLine("self-install: could not copy to \(dest); running in place")
             return false

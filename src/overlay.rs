@@ -135,7 +135,7 @@ pub fn show(mon: RECT, scale: f32, title: &str, subtitle: &str) {
         let Ok(hwnd) = CreateWindowExW(
             WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED,
             class,
-            w!("Notch reminder"),
+            w!("AgentNotch reminder"),
             WS_POPUP,
             mon.left,
             mon.top,

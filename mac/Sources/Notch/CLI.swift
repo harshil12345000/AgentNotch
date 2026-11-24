@@ -1,7 +1,7 @@
 import Foundation
 import NotchCore
 
-/// `Notch --hook`: read the hook JSON from stdin, hand it to the app, exit 0.
+/// `AgentNotch --hook`: read the hook JSON from stdin, hand it to the app, exit 0.
 /// Prints nothing unless it is carrying an Approve / Deny back, and never fails the caller.
 enum HookClient {
     static func run(_ args: [String]) {
@@ -23,7 +23,7 @@ enum HookClient {
         guard isPermission else { return }
         switch answer {
         case "allow": print(#"{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}"#)
-        case "deny": print(#"{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny","message":"Denied from Notch"}}}"#)
+        case "deny": print(#"{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny","message":"Denied from AgentNotch"}}}"#)
         default: break // "pass" or nothing: leave the decision to Claude Code's own prompt
         }
     }
@@ -32,19 +32,19 @@ enum HookClient {
 /// Command-line actions that do not need the app's window.
 enum CLI {
     static let help = """
-    Notch - your AI coding agents at a glance (macOS)
+    AgentNotch - your AI coding agents at a glance (macOS)
 
-      Notch                              start the app
-      Notch --status                     what Notch detects (open sessions, hooks)
-      Notch --install-hooks              add the hooks to ~/.claude/settings.json (backup first)
-      Notch --uninstall-hooks            remove them again
-      Notch --hooks-status               say whether they are installed
+      AgentNotch                              start the app
+      AgentNotch --status                     what AgentNotch detects (open sessions, hooks)
+      AgentNotch --install-hooks              add the hooks to ~/.claude/settings.json (backup first)
+      AgentNotch --uninstall-hooks            remove them again
+      AgentNotch --hooks-status               say whether they are installed
             [--codex]                    ... act on Codex (~/.codex/hooks.json)
             [--settings <file>]          ... act on another settings file
-      Notch --decide <session> allow|deny    answer a pending permission request
-      Notch --quit                       ask the running app to exit
-      Notch --snapshot <file.png>        render the panel with demo data [--expanded] [--settings]
-      Notch --hook                       (used by the hooks) forward stdin JSON to the app
+      AgentNotch --decide <session> allow|deny    answer a pending permission request
+      AgentNotch --quit                       ask the running app to exit
+      AgentNotch --snapshot <file.png>        render the panel with demo data [--expanded] [--settings]
+      AgentNotch --hook                       (used by the hooks) forward stdin JSON to the app
     """
 
     /// The path hooks should run: this executable, resolved.
@@ -77,10 +77,10 @@ enum CLI {
         if let sid = after("--decide") {
             let allow = has("allow")
             guard allow || has("deny") else {
-                print("usage: Notch --decide <session> allow|deny")
+                print("usage: AgentNotch --decide <session> allow|deny")
                 return true
             }
-            if !control(.object([.init("decide", .string(sid)), .init("allow", .bool(allow))])) { print("Notch is not running.") }
+            if !control(.object([.init("decide", .string(sid)), .init("allow", .bool(allow))])) { print("AgentNotch is not running.") }
             return true
         }
         if has("--status") {

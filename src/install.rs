@@ -1,8 +1,8 @@
-//! `notch.exe --install`: put Notch in a permanent place and add shortcuts, without an
+//! `AgentNotch.exe --install`: put AgentNotch in a permanent place and add shortcuts, without an
 //! installer. Everything is per-user; nothing needs administrator rights.
 //!
-//!   exe        %LOCALAPPDATA%\Programs\Notch\notch.exe
-//!   shortcuts  Desktop\Notch.lnk and Start Menu\Programs\Notch.lnk
+//!   exe        %LOCALAPPDATA%\Programs\AgentNotch\AgentNotch.exe
+//!   shortcuts  Desktop\AgentNotch.lnk and Start Menu\Programs\AgentNotch.lnk
 //!
 //! Windows does not let programs pin themselves to the taskbar. Pin the shortcut by hand:
 //! right-click it (Start Menu or desktop) and choose "Pin to taskbar".
@@ -15,7 +15,7 @@ use crate::adapters::claude_hooks as hooks;
 use crate::util::wide;
 
 pub fn install_dir() -> PathBuf {
-    PathBuf::from(std::env::var_os("LOCALAPPDATA").unwrap_or_default()).join("Programs").join("Notch")
+    PathBuf::from(std::env::var_os("LOCALAPPDATA").unwrap_or_default()).join("Programs").join("AgentNotch")
 }
 
 fn known_folder(id: &GUID) -> Option<PathBuf> {
@@ -28,14 +28,31 @@ fn known_folder(id: &GUID) -> Option<PathBuf> {
 }
 
 fn shortcut_paths() -> Vec<PathBuf> {
-    [known_folder(&FOLDERID_Desktop), known_folder(&FOLDERID_Programs)].into_iter().flatten().map(|d| d.join("Notch.lnk")).collect()
+    [known_folder(&FOLDERID_Desktop), known_folder(&FOLDERID_Programs)].into_iter().flatten().map(|d| d.join("AgentNotch.lnk")).collect()
+}
+
+/// Remove an install from before the rename: its folder and its shortcuts.
+fn remove_old_install(report: &mut Vec<String>) {
+    let old = install_dir().with_file_name("Notch");
+    if old.join("notch.exe").exists() {
+        for _ in 0..30 {
+            if std::fs::remove_dir_all(&old).is_ok() {
+                report.push(format!("Removed the old copy in {}", old.display()));
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(150));
+        }
+    }
+    for d in [known_folder(&FOLDERID_Desktop), known_folder(&FOLDERID_Programs)].into_iter().flatten() {
+        let _ = std::fs::remove_file(d.join("Notch.lnk"));
+    }
 }
 
 fn write_shortcut(lnk: &Path, target: &Path) -> std::result::Result<(), String> {
     unsafe {
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
         let link: IShellLinkW = CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER).map_err(|e| e.to_string())?;
-        let (t, dir, desc) = (wide(&target.to_string_lossy()), wide(&target.parent().unwrap_or(Path::new(".")).to_string_lossy()), wide("Notch: your AI coding agents at a glance"));
+        let (t, dir, desc) = (wide(&target.to_string_lossy()), wide(&target.parent().unwrap_or(Path::new(".")).to_string_lossy()), wide("AgentNotch: your AI coding agents at a glance"));
         link.SetPath(PCWSTR(t.as_ptr())).map_err(|e| e.to_string())?;
         let _ = link.SetWorkingDirectory(PCWSTR(dir.as_ptr()));
         let _ = link.SetDescription(PCWSTR(desc.as_ptr()));
@@ -62,7 +79,7 @@ fn copy_exe(from: &Path, to: &Path) -> std::result::Result<(), String> {
 pub fn install() -> std::result::Result<String, String> {
     let dir = install_dir();
     std::fs::create_dir_all(&dir).map_err(|e| format!("could not create {}: {e}", dir.display()))?;
-    let target = dir.join("notch.exe");
+    let target = dir.join("AgentNotch.exe");
     let me = crate::util::exe_path();
     let mut report = Vec::new();
     // a running notch must exit before its exe can be replaced; it restores Keep Awake on the way out
@@ -73,6 +90,7 @@ pub fn install() -> std::result::Result<String, String> {
     } else {
         std::thread::sleep(std::time::Duration::from_millis(800));
     }
+    remove_old_install(&mut report);
     for lnk in shortcut_paths() {
         match write_shortcut(&lnk, &target) {
             Ok(_) => report.push(format!("Shortcut: {}", lnk.display())),
@@ -92,7 +110,7 @@ pub fn install() -> std::result::Result<String, String> {
         report.push(hooks::install(&t).map(|_| "Codex hooks now point at the installed copy".to_string()).unwrap_or_else(|e| format!("Codex hooks not updated: {e}")));
     }
     if crate::winutil::autostart_enabled() {
-        crate::winutil::reg_set_string("Software\\Microsoft\\Windows\\CurrentVersion\\Run", "Notch", &format!("\"{}\"", target.display()));
+        crate::winutil::set_autostart_to(&target);
         report.push("Start with Windows now points at the installed copy".into());
     }
     // no inherited handles: a console that ran the installer must not wait for the notch
@@ -101,7 +119,7 @@ pub fn install() -> std::result::Result<String, String> {
         Ok(_) => report.push("Started.".into()),
         Err(e) => report.push(format!("Could not start it: {e}")),
     }
-    report.push("To pin it to the taskbar: right-click the Notch shortcut and choose \"Pin to taskbar\" (Windows does not let apps pin themselves).".into());
+    report.push("To pin it to the taskbar: right-click the AgentNotch shortcut and choose \"Pin to taskbar\" (Windows does not let apps pin themselves).".into());
     Ok(report.join("\n"))
 }
 

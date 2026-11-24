@@ -47,7 +47,7 @@ pub fn claude_dirs() -> Vec<(String, PathBuf)> {
     out
 }
 
-/// "C:\Tools\notch.exe" -> "/mnt/c/Tools/notch.exe" (the default WSL drive mount).
+/// "C:\Tools\AgentNotch.exe" -> "/mnt/c/Tools/AgentNotch.exe" (the default WSL drive mount).
 pub fn to_mnt_path(win: &str) -> Option<String> {
     let b = win.as_bytes();
     if b.len() < 3 || b[1] != b':' {
@@ -60,10 +60,10 @@ pub fn to_mnt_path(win: &str) -> Option<String> {
 /// WSL interop, tagged with the distro so paths can be mapped back.
 pub fn hook_target(distro: &str) -> Result<crate::adapters::claude_hooks::Target, String> {
     if !running_distros().iter().any(|d| d.eq_ignore_ascii_case(distro)) {
-        return Err(format!("WSL distro '{distro}' is not running (start it first; Notch never boots a distro itself)"));
+        return Err(format!("WSL distro '{distro}' is not running (start it first; AgentNotch never boots a distro itself)"));
     }
     let home = home_of(distro).ok_or("could not read $HOME inside the distro")?;
-    let exe = to_mnt_path(&crate::util::exe_path().to_string_lossy()).ok_or("notch.exe is not on a drive WSL can mount")?;
+    let exe = to_mnt_path(&crate::util::exe_path().to_string_lossy()).ok_or("AgentNotch.exe is not on a drive WSL can mount")?;
     Ok(crate::adapters::claude_hooks::Target { settings: unc(distro, &format!("{home}/.claude/settings.json")), command: exe, args: vec!["--hook".into(), "--wsl".into(), distro.to_string()], events: &crate::adapters::claude::HOOK_EVENTS, exec_form: true })
 }
 
@@ -71,7 +71,7 @@ pub fn hook_target(distro: &str) -> Result<crate::adapters::claude_hooks::Target
 mod tests {
     #[test]
     fn mnt_paths() {
-        assert_eq!(super::to_mnt_path("C:\\Tools\\notch.exe").as_deref(), Some("/mnt/c/Tools/notch.exe"));
+        assert_eq!(super::to_mnt_path("C:\\Tools\\AgentNotch.exe").as_deref(), Some("/mnt/c/Tools/AgentNotch.exe"));
         assert_eq!(super::to_mnt_path("relative"), None);
     }
 }

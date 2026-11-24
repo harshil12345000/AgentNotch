@@ -22,7 +22,7 @@ pub const WM_TRAY: u32 = WM_APP + 1;
 pub const WM_UIMSG: u32 = WM_APP + 2;
 pub const WM_FOREGROUND: u32 = WM_APP + 3;
 const WM_FIRSTRUN: u32 = WM_APP + 4;
-/// Sent by a second `notch.exe` (the desktop or taskbar shortcut): show yourself.
+/// Sent by a second `AgentNotch.exe` (the desktop or taskbar shortcut): show yourself.
 const WM_SUMMON: u32 = WM_APP + 5;
 const WM_MOUSELEAVE: u32 = 0x02A3;
 
@@ -210,11 +210,11 @@ pub struct App {
     pub scroll: usize,
     pub usage: Usage,
     pub rc: RcState,
-    /// Remote Control was started by Notch (so Notch can stop it).
+    /// Remote Control was started by AgentNotch (so AgentNotch can stop it).
     rc_ours: bool,
     rc_deadline: u64,
     pub awake: bool,
-    /// Notch is holding the system awake (as opposed to the lid setting just being "do nothing").
+    /// AgentNotch is holding the system awake (as opposed to the lid setting just being "do nothing").
     awake_hold: bool,
     usage_next: u64,
     last_usage_try: u64,
@@ -1041,7 +1041,7 @@ impl App {
             Ok(m) => logln!("hooks: {m}"),
             Err(e) => {
                 logln!("hooks: failed: {e}");
-                winutil::message_box(self.hwnd, "Notch", &format!("Could not change the Claude Code hooks:\n\n{e}"), false);
+                winutil::message_box(self.hwnd, "AgentNotch", &format!("Could not change the Claude Code hooks:\n\n{e}"), false);
             }
         }
         self.hooks_installed = self.query_hooks_installed();
@@ -1049,7 +1049,7 @@ impl App {
 
     /// First run: offer to install the hooks. Asked once.
     /// First run: connect to the agents that are on this PC, with no questions asked.
-    /// Adds Notch's hooks to Claude Code and Codex (after any existing hooks, with a backup,
+    /// Adds AgentNotch's hooks to Claude Code and Codex (after any existing hooks, with a backup,
     /// removable in Settings) and switches Start with Windows on. Done once.
     fn offer_hooks(&mut self) {
         if self.cfg.hooks_prompted {
@@ -1073,7 +1073,7 @@ impl App {
                 Err(e) => logln!("first run: Codex hooks not installed: {e}"),
             }
         }
-        if crate::util::exe_path() == crate::install::install_dir().join("notch.exe") && !winutil::autostart_enabled() {
+        if crate::util::exe_path() == crate::install::install_dir().join("AgentNotch.exe") && !winutil::autostart_enabled() {
             winutil::set_autostart(true);
         }
         self.hooks_installed = self.query_hooks_installed();
@@ -1094,7 +1094,7 @@ impl App {
     // ---- Remote Control
 
     /// Work out the Remote Control state. `scan` also looks for a Remote Control that was
-    /// started outside Notch (a process scan, so only done now and then).
+    /// started outside AgentNotch (a process scan, so only done now and then).
     fn refresh_rc(&mut self, scan: bool) {
         if self.demo {
             return;
@@ -1162,11 +1162,11 @@ impl App {
                         self.rc_deadline = crate::util::now_unix() + 25;
                     }
                     Err(e) => {
-                        winutil::message_box(self.hwnd, "Notch", &format!("Could not start Remote Control:\n\n{e}"), false);
+                        winutil::message_box(self.hwnd, "AgentNotch", &format!("Could not start Remote Control:\n\n{e}"), false);
                     }
                 }
             }
-            // started somewhere else, or still starting: nothing for Notch to stop
+            // started somewhere else, or still starting: nothing for AgentNotch to stop
             _ => {}
         }
         self.refresh_rc(false);
@@ -1201,9 +1201,9 @@ impl App {
     }
 
     fn toggle_awake(&mut self) {
-        // Three cases: Notch is holding it (switch off and restore), Windows' lid setting is
+        // Three cases: AgentNotch is holding it (switch off and restore), Windows' lid setting is
         // already "do nothing" (switch that off), or it is off / only another app is holding
-        // the PC awake (switch Notch's own hold on).
+        // the PC awake (switch AgentNotch's own hold on).
         let res = if self.awake_hold || crate::power::lid_is_do_nothing() {
             self.awake_hold = false;
             crate::power::disable(true)
@@ -1218,7 +1218,7 @@ impl App {
                 config::save(&self.cfg);
             }
             Err(e) => {
-                winutil::message_box(self.hwnd, "Notch", &format!("Could not change the power settings:\n\n{e}"), false);
+                winutil::message_box(self.hwnd, "AgentNotch", &format!("Could not change the power settings:\n\n{e}"), false);
             }
         }
         self.refresh_awake();
@@ -1234,7 +1234,7 @@ impl App {
     }
 
     /// On: Keep Awake on, Remote Control on, and a full-screen reminder to turn on the
-    /// phone's hotspot. Off: Keep Awake off and the Remote Control that Notch started
+    /// phone's hotspot. Off: Keep Awake off and the Remote Control that AgentNotch started
     /// stopped. Each part can still be switched on its own with its own toggle.
     fn toggle_travel(&mut self) {
         let on = !self.cfg.travel_mode;
@@ -1247,7 +1247,7 @@ impl App {
                         self.cfg.keep_awake = true;
                     }
                     Err(e) => {
-                        winutil::message_box(self.hwnd, "Notch", &format!("Travel mode could not switch Keep Awake on:\n\n{e}"), false);
+                        winutil::message_box(self.hwnd, "AgentNotch", &format!("Travel mode could not switch Keep Awake on:\n\n{e}"), false);
                     }
                 }
             }
@@ -1262,7 +1262,7 @@ impl App {
                 self.awake_hold = false;
                 self.cfg.keep_awake = false;
                 if let Err(e) = crate::power::disable(true) {
-                    winutil::message_box(self.hwnd, "Notch", &format!("Travel mode could not switch Keep Awake off:\n\n{e}"), false);
+                    winutil::message_box(self.hwnd, "AgentNotch", &format!("Travel mode could not switch Keep Awake off:\n\n{e}"), false);
                 }
             }
             if self.rc_ours {
@@ -1693,17 +1693,17 @@ pub fn run(opts: Opts) -> i32 {
     unsafe {
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         let snapshot = opts.snapshot.is_some();
-        // Double-clicking a downloaded notch.exe installs it: copy to the user's Programs
+        // Double-clicking a downloaded AgentNotch.exe installs it: copy to the user's Programs
         // folder, add shortcuts, start that copy. Nothing to do by hand.
         let plain = opts.bench.is_none() && !opts.demo && !opts.no_prompt && !snapshot && opts.edge.is_none() && crate::util::instance_suffix().is_empty();
         let me = crate::util::exe_path();
         let dev_build = me.to_string_lossy().to_lowercase().contains("\\target\\");
-        if plain && !dev_build && me != crate::install::install_dir().join("notch.exe") {
+        if plain && !dev_build && me != crate::install::install_dir().join("AgentNotch.exe") {
             match crate::install::install() {
                 Ok(m) => logln!("self-install: {}", m.replace('\n', " | ")),
                 Err(e) => {
                     logln!("self-install failed: {e}");
-                    winutil::message_box(HWND::default(), "Notch", &format!("Notch could not install itself:\n\n{e}"), false);
+                    winutil::message_box(HWND::default(), "AgentNotch", &format!("AgentNotch could not install itself:\n\n{e}"), false);
                 }
             }
             return 0;

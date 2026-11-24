@@ -11,11 +11,11 @@ pub const AUMID: &str = "Notch.Island";
 
 pub fn register() {
     let key = format!("Software\\Classes\\AppUserModelId\\{AUMID}");
-    crate::winutil::reg_set_string(&key, "DisplayName", "Notch");
-    // "notch://" links: clicking a toast runs `notch.exe --activate <link>`, which tells the
+    crate::winutil::reg_set_string(&key, "DisplayName", "AgentNotch");
+    // "notch://" links: clicking a toast runs `AgentNotch.exe --activate <link>`, which tells the
     // running notch which session to bring to the front.
     let exe = crate::util::exe_path();
-    crate::winutil::reg_set_string("Software\\Classes\\notch", "", "URL:Notch");
+    crate::winutil::reg_set_string("Software\\Classes\\notch", "", "URL:AgentNotch");
     crate::winutil::reg_set_string("Software\\Classes\\notch", "URL Protocol", "");
     crate::winutil::reg_set_string("Software\\Classes\\notch\\shell\\open\\command", "", &format!("\"{}\" --activate \"%1\"", exe.display()));
 }

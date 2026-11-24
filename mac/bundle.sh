@@ -1,5 +1,5 @@
 #!/bin/bash
-# Builds Notch.app (universal: Apple silicon and Intel) and zips it.
+# Builds AgentNotch.app (universal: Apple silicon and Intel) and zips it.
 # Usage: ./bundle.sh        (run from the mac/ folder, on macOS)
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -7,9 +7,9 @@ cd "$(dirname "$0")"
 swift build -c release --arch arm64 --arch x86_64
 BIN=".build/apple/Products/Release/Notch"
 
-APP="dist/Notch.app"
+APP="dist/AgentNotch.app"
 rm -rf dist && mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$BIN" "$APP/Contents/MacOS/Notch"
+cp "$BIN" "$APP/Contents/MacOS/AgentNotch"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 cp Resources/DMSans.ttf "$APP/Contents/Resources/DMSans.ttf"
 
@@ -32,9 +32,9 @@ codesign --force --deep --sign - "$APP"
 # the download: the app and the setup instructions, side by side
 PKG="dist/pkg"
 rm -rf "$PKG" && mkdir -p "$PKG"
-ditto "$APP" "$PKG/Notch.app"
-cp Resources/Notch-Mac-Setup.txt "$PKG/READ ME FIRST - Notch Setup.txt"
-(cd dist && ditto -c -k pkg Notch-mac.zip)
+ditto "$APP" "$PKG/AgentNotch.app"
+cp Resources/AgentNotch-Mac-Setup.txt "$PKG/READ ME FIRST - AgentNotch Setup.txt"
+(cd dist && ditto -c -k pkg AgentNotch-mac.zip)
 rm -rf "$PKG"
-echo "built $APP and dist/Notch-mac.zip"
-lipo -archs "$APP/Contents/MacOS/Notch"
+echo "built $APP and dist/AgentNotch-mac.zip"
+lipo -archs "$APP/Contents/MacOS/AgentNotch"

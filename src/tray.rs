@@ -43,7 +43,7 @@ fn data(hwnd: HWND) -> NOTIFYICONDATAW {
     let mut d = NOTIFYICONDATAW { cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32, hWnd: hwnd, uID: 1, ..Default::default() };
     d.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
     d.uCallbackMessage = crate::app::WM_TRAY;
-    for (i, c) in "Notch".encode_utf16().enumerate() {
+    for (i, c) in "AgentNotch".encode_utf16().enumerate() {
         d.szTip[i] = c;
     }
     d

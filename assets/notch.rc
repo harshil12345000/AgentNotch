@@ -9,11 +9,11 @@ BEGIN
     BEGIN
         BLOCK "040904b0"
         BEGIN
-            VALUE "FileDescription", "Notch"
-            VALUE "ProductName", "Notch"
+            VALUE "FileDescription", "AgentNotch"
+            VALUE "ProductName", "AgentNotch"
             VALUE "FileVersion", "0.1.0"
             VALUE "ProductVersion", "0.1.0"
-            VALUE "OriginalFilename", "notch.exe"
+            VALUE "OriginalFilename", "AgentNotch.exe"
         END
     END
     BLOCK "VarFileInfo"

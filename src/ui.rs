@@ -421,7 +421,7 @@ fn collapsed(a: &App, g: &Gfx, t: &Theme, x: f32, y: f32, w: f32) {
 
     if n == 0 {
         g.dot(left + 17.0, cy, 3.5, t.dim.a(0.6));
-        g.text("Notch", Font::Body, left + 28.0, y, 80.0, PILL_H, Align::Left, t.dim);
+        g.text("AgentNotch", Font::Body, left + 28.0, y, 110.0, PILL_H, Align::Left, t.dim);
         return;
     }
     let active = a.store.active_count();
@@ -502,7 +502,7 @@ fn expanded(a: &App, g: &Gfx, t: &Theme, x: f32, y: f32, w: f32, hits: &mut Vec<
     let n = a.store.sessions.len();
     let active = a.store.active_count();
     let title = match (n, active) {
-        (0, _) => "Notch".to_string(),
+        (0, _) => "AgentNotch".to_string(),
         (1, 0) => "1 session, idle".to_string(),
         (_, 0) => format!("{n} sessions, idle"),
         (_, 1) => "1 active session".to_string(),

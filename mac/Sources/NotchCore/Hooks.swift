@@ -1,6 +1,6 @@
 import Foundation
 
-/// Install / uninstall Notch's hooks in a Claude Code (or Codex) settings file.
+/// Install / uninstall AgentNotch's hooks in a Claude Code (or Codex) settings file.
 ///
 /// Rules: never overwrite or reorder the user's own hooks, back the file up before the
 /// first change, and make uninstall put the file back byte for byte when nothing else
@@ -149,7 +149,7 @@ public enum Hooks {
         var root = try original.map(parse) ?? .object([])
         let (bak, absent) = (backupURL(t.settings), absentURL(t.settings))
         try fm.createDirectory(at: t.settings.deletingLastPathComponent(), withIntermediateDirectories: true)
-        // keep the first backup: it is the file as it was before Notch ever touched it
+        // keep the first backup: it is the file as it was before AgentNotch ever touched it
         if !fm.fileExists(atPath: bak.path), !fm.fileExists(atPath: absent.path) {
             if let original { try original.write(to: bak) } else { try Data().write(to: absent) }
         }
@@ -181,7 +181,7 @@ public enum Hooks {
             return "No settings file: nothing to remove."
         }
         var root = try parse(current)
-        guard strip(&root) else { return "Notch hooks are not installed: nothing to remove." }
+        guard strip(&root) else { return "AgentNotch hooks are not installed: nothing to remove." }
         var note = "Hooks removed."
         if fm.fileExists(atPath: absent.path), root.isEmptyObject {
             try fm.removeItem(at: settings)

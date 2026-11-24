@@ -1,5 +1,5 @@
 //! Local IPC. The island listens on \\.\pipe\notch (and optionally 127.0.0.1 for WSL);
-//! `notch.exe --hook` is the client. One message per connection:
+//! `AgentNotch.exe --hook` is the client. One message per connection:
 //!   {"v":1,"agent":"claude","pids":[..],"wsl":"Ubuntu","tok":"..","p":{ ...raw hook JSON... }}
 use std::io::Read;
 use windows::core::*;
@@ -26,12 +26,12 @@ fn handle(bytes: &[u8], need_token: Option<&str>) {
     }
     let agent = v.get("agent").and_then(|a| a.as_str()).unwrap_or("claude");
     if agent == "notch" {
-        // from `notch.exe --activate`: a toast was clicked
+        // from `AgentNotch.exe --activate`: a toast was clicked
         let p = v.get("p");
         if let Some(sid) = p.and_then(|p| p.get("focus")).and_then(|s| s.as_str()) {
             post(UiMsg::Focus(sid.to_string()));
         }
-        // Approve / Deny from a toast button or `notch.exe --decide`
+        // Approve / Deny from a toast button or `AgentNotch.exe --decide`
         if let Some(sid) = p.and_then(|p| p.get("decide")).and_then(|s| s.as_str()) {
             let allow = p.and_then(|p| p.get("allow")).and_then(|a| a.as_bool()).unwrap_or(false);
             post(UiMsg::Decide(sid.to_string(), allow));

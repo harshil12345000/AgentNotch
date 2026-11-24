@@ -2,13 +2,13 @@ import AppKit
 import Foundation
 import NotchCore
 
-/// Settings, stored as JSON in ~/Library/Application Support/Notch/config.json.
+/// Settings, stored as JSON in ~/Library/Application Support/AgentNotch/config.json.
 struct Config: Codable {
     var hoverExpand = true
     var hooksPrompted = false
     var keepAwake = false
     var travelMode = false
-    /// On by default. The first time the panel is opened macOS asks once to let Notch read
+    /// On by default. The first time the panel is opened macOS asks once to let AgentNotch read
     /// the Claude sign-in from the Keychain.
     var showUsage = true
     var notifications = true

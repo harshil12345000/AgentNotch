@@ -1,6 +1,6 @@
 import Foundation
 
-/// Local IPC over a Unix domain socket. The app listens; `Notch --hook` is the client.
+/// Local IPC over a Unix domain socket. The app listens; `AgentNotch --hook` is the client.
 ///
 /// One message per connection. The client writes its message and half-closes; the server
 /// reads to the end. For a permission request the server keeps the connection open and

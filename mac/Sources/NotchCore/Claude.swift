@@ -3,7 +3,7 @@ import Foundation
 /// Claude Code: hook payloads, transcripts, subagent files and the registry of open sessions.
 /// Hook names and fields follow https://code.claude.com/docs/en/hooks.
 public enum Claude {
-    /// The hook events Notch registers for.
+    /// The hook events AgentNotch registers for.
     public static let hookEvents = [
         "SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionRequest",
         "Notification", "Stop", "StopFailure", "SubagentStart", "SubagentStop", "PreCompact", "SessionEnd",

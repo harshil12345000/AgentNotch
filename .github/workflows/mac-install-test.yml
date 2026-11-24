@@ -18,30 +18,30 @@ jobs:
         run: |
           curl -fsSL https://agentnotch-six.vercel.app/install.sh | sh
           sleep 6
-          pgrep -lf "Applications/Notch.app" || (echo "Notch is not running from ~/Applications" && exit 1)
-          "$HOME/Applications/Notch.app/Contents/MacOS/Notch" --status
+          pgrep -lf "Applications/AgentNotch.app" || (echo "AgentNotch is not running from ~/Applications" && exit 1)
+          "$HOME/Applications/AgentNotch.app/Contents/MacOS/AgentNotch" --status
           mkdir -p shots && screencapture -x shots/after-installer.png || true
-          "$HOME/Applications/Notch.app/Contents/MacOS/Notch" --quit; sleep 2
-          rm -rf "$HOME/Applications/Notch.app" "$HOME/Library/Application Support/Notch"
+          "$HOME/Applications/AgentNotch.app/Contents/MacOS/AgentNotch" --quit; sleep 2
+          rm -rf "$HOME/Applications/AgentNotch.app" "$HOME/Library/Application Support/AgentNotch"
 
       - name: Downloaded zip moves itself to ~/Applications
         run: |
           mkdir -p "$HOME/Downloads/n" && cd "$HOME/Downloads/n"
-          cp "$GITHUB_WORKSPACE/mac/dist/Notch-mac.zip" Notch-mac.zip
-          chk() { if pgrep -x Notch >/dev/null; then echo "alive after: $1"; else echo "DEAD after: $1"; fi; }
-          ditto -x -k Notch-mac.zip .
+          cp "$GITHUB_WORKSPACE/mac/dist/AgentNotch-mac.zip" AgentNotch-mac.zip
+          chk() { if pgrep -x AgentNotch >/dev/null; then echo "alive after: $1"; else echo "DEAD after: $1"; fi; }
+          ditto -x -k AgentNotch-mac.zip .
           mkdir -p "$HOME/.claude" && echo '{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"echo mine"}]}]}}' > "$HOME/.claude/settings.json"
-          mkdir -p "$HOME/Library/Application Support/Notch" && echo '{"approveInTerminal": true}' > "$HOME/Library/Application Support/Notch/config.json"
-          open Notch.app
+          mkdir -p "$HOME/Library/Application Support/AgentNotch" && echo '{"approveInTerminal": true}' > "$HOME/Library/Application Support/AgentNotch/config.json"
+          open AgentNotch.app
           sleep 8
           mkdir -p "$GITHUB_WORKSPACE/shots" && screencapture -x "$GITHUB_WORKSPACE/shots/after-launch.png" || true
-          pgrep -lf "$HOME/Applications/Notch.app" || (echo "did not relocate to ~/Applications" && exit 1)
+          pgrep -lf "$HOME/Applications/AgentNotch.app" || (echo "did not relocate to ~/Applications" && exit 1)
           echo "--- hooks after first launch"
-          "$HOME/Applications/Notch.app/Contents/MacOS/Notch" --hooks-status
-          grep -c "Applications/Notch.app/Contents/MacOS/Notch" "$HOME/.claude/settings.json"
+          "$HOME/Applications/AgentNotch.app/Contents/MacOS/AgentNotch" --hooks-status
+          grep -c "Applications/AgentNotch.app/Contents/MacOS/AgentNotch" "$HOME/.claude/settings.json"
           python3 -c "import json,os; v=json.load(open(os.path.expanduser('~/.claude/settings.json')))['hooks']; assert v['Stop'][0]['hooks'][0]['command']=='echo mine', 'existing hook must stay first'; print('existing hook kept first; events with hooks:', len(v))"
           echo "--- a simulated session through the hook"
-          B="$HOME/Applications/Notch.app/Contents/MacOS/Notch"
+          B="$HOME/Applications/AgentNotch.app/Contents/MacOS/AgentNotch"
           echo '{"session_id":"ci-1","cwd":"/tmp/demo","hook_event_name":"UserPromptSubmit"}' | "$B" --hook
           echo '{"session_id":"ci-1","cwd":"/tmp/demo","hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"swift test"}}' | "$B" --hook
           chk "two hook events"; sleep 1
@@ -51,25 +51,25 @@ jobs:
           sleep 2; chk "decide"
           echo "permission hook returned: $(cat /tmp/decision.txt)"
           echo "--- still running?"
-          pgrep -lf "Applications/Notch.app" || echo "NOTCH IS NOT RUNNING ANY MORE"
+          pgrep -lf "Applications/AgentNotch.app" || echo "NOTCH IS NOT RUNNING ANY MORE"
           ls "$HOME/Library/Logs/DiagnosticReports/" 2>/dev/null | grep -i notch || echo "no crash reports"
-          for f in "$HOME"/Library/Logs/DiagnosticReports/Notch*; do
+          for f in "$HOME"/Library/Logs/DiagnosticReports/AgentNotch*; do
             [ -f "$f" ] || continue
             echo "=== $f"
             grep -o -E '"(type|signal|indicator|symbol)" ?: ?"[^"]*"' "$f" | head -60 || head -c 2000 "$f"
           done
           echo "--- windows the app has on screen"
-          swift -e 'import CoreGraphics; import Foundation; let l = CGWindowListCopyWindowInfo([.optionAll], kCGNullWindowID) as! [[String: Any]]; for w in l where (w["kCGWindowOwnerName"] as? String) == "Notch" { print(w["kCGWindowBounds"] ?? "", "layer", w["kCGWindowLayer"] ?? "", "onscreen", w["kCGWindowIsOnscreen"] ?? "no", "alpha", w["kCGWindowAlpha"] ?? "") }' || true
+          swift -e 'import CoreGraphics; import Foundation; let l = CGWindowListCopyWindowInfo([.optionAll], kCGNullWindowID) as! [[String: Any]]; for w in l where (w["kCGWindowOwnerName"] as? String) == "AgentNotch" { print(w["kCGWindowBounds"] ?? "", "layer", w["kCGWindowLayer"] ?? "", "onscreen", w["kCGWindowIsOnscreen"] ?? "no", "alpha", w["kCGWindowAlpha"] ?? "") }' || true
           cd "$GITHUB_WORKSPACE" && mkdir -p shots && screencapture -x shots/after-zip.png || true
-          tail -5 "$HOME/Library/Application Support/Notch/notch.log" || true
+          tail -5 "$HOME/Library/Application Support/AgentNotch/notch.log" || true
 
       - name: Find where the app stops
         run: |
-          B="$HOME/Applications/Notch.app/Contents/MacOS/Notch"
-          pkill -x Notch || true; sleep 1
+          B="$HOME/Applications/AgentNotch.app/Contents/MacOS/AgentNotch"
+          pkill -x AgentNotch || true; sleep 1
           "$B" --no-install > /tmp/app.out 2>&1 &
           sleep 5
-          chk() { if pgrep -x Notch >/dev/null; then echo "alive after: $1"; else echo "DEAD after: $1"; fi; }
+          chk() { if pgrep -x AgentNotch >/dev/null; then echo "alive after: $1"; else echo "DEAD after: $1"; fi; }
           chk "start"
           echo '{"session_id":"ci-2","cwd":"/tmp/demo","hook_event_name":"UserPromptSubmit"}' | "$B" --hook; sleep 2; chk "UserPromptSubmit"
           echo '{"session_id":"ci-2","cwd":"/tmp/demo","hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"swift test"}}' | "$B" --hook; sleep 2; chk "PreToolUse"
@@ -83,11 +83,11 @@ jobs:
           sleep 12
           echo "--- app output"; cat /tmp/app.out
           echo "--- crash reports"; ls -la "$HOME/Library/Logs/DiagnosticReports/" 2>/dev/null || true
-          for f in "$HOME"/Library/Logs/DiagnosticReports/Notch*; do
+          for f in "$HOME"/Library/Logs/DiagnosticReports/AgentNotch*; do
             [ -f "$f" ] || continue
             grep -o -E '"(type|signal|indicator|symbol)" ?: ?"[^"]*"' "$f" | head -70
           done
-          tail -8 "$HOME/Library/Application Support/Notch/notch.log" || true
+          tail -8 "$HOME/Library/Application Support/AgentNotch/notch.log" || true
 
       - uses: actions/upload-artifact@v4
         if: always()

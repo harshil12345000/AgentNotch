@@ -30,10 +30,10 @@ final class CoreTests: XCTestCase {
     func testHooksRoundTripIsByteIdentical() throws {
         let file = tmp("roundtrip").appendingPathComponent("settings.json")
         try Data(original.utf8).write(to: file)
-        let t = Hooks.claudeTarget(exe: "/Applications/Notch.app/Contents/MacOS/Notch", settings: file)
+        let t = Hooks.claudeTarget(exe: "/Applications/AgentNotch.app/Contents/MacOS/AgentNotch", settings: file)
         try Hooks.install(t)
         XCTAssertTrue(Hooks.installed(file))
-        XCTAssertEqual(Hooks.installedCommand(file), "/Applications/Notch.app/Contents/MacOS/Notch")
+        XCTAssertEqual(Hooks.installedCommand(file), "/Applications/AgentNotch.app/Contents/MacOS/AgentNotch")
         let v = JSON.parse(try Data(contentsOf: file))!
         let pre = v["hooks"]!["PreToolUse"]!.array!
         XCTAssertEqual(pre.count, 2)
@@ -54,7 +54,7 @@ final class CoreTests: XCTestCase {
     func testHooksKeepUserEditsAndHandleMissingAndInvalidFiles() throws {
         let file = tmp("edits").appendingPathComponent("settings.json")
         try Data(original.utf8).write(to: file)
-        let t = Hooks.claudeTarget(exe: "/x/Notch", settings: file)
+        let t = Hooks.claudeTarget(exe: "/x/AgentNotch", settings: file)
         try Hooks.install(t)
         var v = JSON.parse(try Data(contentsOf: file))!
         v["model"] = .string("opus")
@@ -65,14 +65,14 @@ final class CoreTests: XCTestCase {
         XCTAssertFalse(Hooks.installed(file))
 
         let missing = tmp("missing").appendingPathComponent("settings.json")
-        try Hooks.install(Hooks.claudeTarget(exe: "/x/Notch", settings: missing))
+        try Hooks.install(Hooks.claudeTarget(exe: "/x/AgentNotch", settings: missing))
         XCTAssertTrue(Hooks.installed(missing))
         try Hooks.uninstall(missing)
         XCTAssertFalse(FileManager.default.fileExists(atPath: missing.path))
 
         let bad = tmp("bad").appendingPathComponent("settings.json")
         try Data("{ not json".utf8).write(to: bad)
-        XCTAssertThrowsError(try Hooks.install(Hooks.claudeTarget(exe: "/x/Notch", settings: bad)))
+        XCTAssertThrowsError(try Hooks.install(Hooks.claudeTarget(exe: "/x/AgentNotch", settings: bad)))
         XCTAssertEqual(try Data(contentsOf: bad), Data("{ not json".utf8))
     }
 

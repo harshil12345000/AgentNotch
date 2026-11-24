@@ -1,7 +1,7 @@
 //! Agent adapters. Each adapter turns one agent's signals into normalized `AgentEvent`s.
 //!
 //! To add an agent: create a module with a type implementing `AgentAdapter`, add it to
-//! `REGISTRY`, and (if it pushes events) have its hook call `notch.exe --hook --agent <id>`.
+//! `REGISTRY`, and (if it pushes events) have its hook call `AgentNotch.exe --hook --agent <id>`.
 use serde_json::Value;
 
 use crate::config::Config;

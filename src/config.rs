@@ -1,4 +1,4 @@
-//! Config stored as TOML in %APPDATA%\Notch\config.toml.
+//! Config stored as TOML in %APPDATA%\AgentNotch\config.toml.
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -10,7 +10,7 @@ pub struct Config {
     /// Global hotkey that hides / shows the notch, e.g. "Ctrl+\\". Empty = none.
     pub hotkey: String,
     /// Keep Awake was switched on: it is applied again at every start and is left in
-    /// place when Notch quits, until it is switched off.
+    /// place when AgentNotch quits, until it is switched off.
     pub keep_awake: bool,
     /// Travel mode is on (Remote Control + Keep Awake, switched on together).
     pub travel_mode: bool,
