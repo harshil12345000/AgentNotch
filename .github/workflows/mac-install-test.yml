@@ -1,0 +1,51 @@
+name: mac-install-test
+
+# Checks what a new Mac user does: the one-line installer, and opening the downloaded zip.
+on:
+  workflow_dispatch:
+
+jobs:
+  install:
+    runs-on: macos-latest
+    steps:
+      - name: One-line installer
+        run: |
+          curl -fsSL https://agentnotch-six.vercel.app/install.sh | sh
+          sleep 6
+          pgrep -lf "Applications/Notch.app" || (echo "Notch is not running from ~/Applications" && exit 1)
+          "$HOME/Applications/Notch.app/Contents/MacOS/Notch" --status
+          mkdir -p shots && screencapture -x shots/after-installer.png || true
+          "$HOME/Applications/Notch.app/Contents/MacOS/Notch" --quit; sleep 2
+          rm -rf "$HOME/Applications/Notch.app" "$HOME/Library/Application Support/Notch"
+
+      - name: Downloaded zip moves itself to ~/Applications
+        run: |
+          mkdir -p "$HOME/Downloads/n" && cd "$HOME/Downloads/n"
+          curl -fsSL -o Notch-mac.zip https://github.com/harshil12345000/AgentNotch/releases/latest/download/Notch-mac.zip
+          ditto -x -k Notch-mac.zip .
+          mkdir -p "$HOME/.claude" && echo '{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"echo mine"}]}]}}' > "$HOME/.claude/settings.json"
+          open Notch.app
+          sleep 8
+          pgrep -lf "$HOME/Applications/Notch.app" || (echo "did not relocate to ~/Applications" && exit 1)
+          echo "--- hooks after first launch"
+          "$HOME/Applications/Notch.app/Contents/MacOS/Notch" --hooks-status
+          grep -c "Applications/Notch.app/Contents/MacOS/Notch" "$HOME/.claude/settings.json"
+          python3 -c "import json,os; v=json.load(open(os.path.expanduser('~/.claude/settings.json')))['hooks']; assert v['Stop'][0]['hooks'][0]['command']=='echo mine', 'existing hook must stay first'; print('existing hook kept first; events with hooks:', len(v))"
+          echo "--- a simulated session through the hook"
+          B="$HOME/Applications/Notch.app/Contents/MacOS/Notch"
+          echo '{"session_id":"ci-1","cwd":"/tmp/demo","hook_event_name":"UserPromptSubmit"}' | "$B" --hook
+          echo '{"session_id":"ci-1","cwd":"/tmp/demo","hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"swift test"}}' | "$B" --hook
+          sleep 1
+          (echo '{"session_id":"ci-1","cwd":"/tmp/demo","hook_event_name":"PermissionRequest","tool_name":"Bash","tool_input":{"command":"git push"}}' | "$B" --hook > /tmp/decision.txt) &
+          sleep 2
+          "$B" --decide ci-1 allow || true
+          sleep 2
+          echo "permission hook returned: $(cat /tmp/decision.txt)"
+          cd "$GITHUB_WORKSPACE" && mkdir -p shots && screencapture -x shots/after-zip.png || true
+          tail -5 "$HOME/Library/Application Support/Notch/notch.log" || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: install-test
+          path: shots
