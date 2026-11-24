@@ -94,6 +94,16 @@ fn main() {
         return;
     }
 
+    if has("--usage-raw") {
+        // what the usage endpoint answers, as it came (no credentials are printed)
+        winutil::attach_console();
+        match usage::fetch_raw() {
+            Ok((status, body, retry)) => println!("HTTP {status} retry-after={retry:?}
+{}", String::from_utf8_lossy(&body)),
+            Err(e) => println!("error: {e}"),
+        }
+        return;
+    }
     if has("--status") {
         winutil::attach_console();
         let lid = power::read_lid();

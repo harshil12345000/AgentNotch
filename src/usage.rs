@@ -76,7 +76,10 @@ pub fn load_last() -> Option<Usage> {
         match (p.next()?, p.next(), p.next()) {
             ("at", Some(t), _) => u.fetched_at = t.parse().ok()?,
             (name @ ("five" | "week"), Some(pct), reset) => {
-                let w = UsageWindow { pct: pct.parse().ok(), tokens: None, resets_at: reset.and_then(|r| r.parse().ok()) };
+                let resets_at: Option<u64> = reset.and_then(|r| r.parse().ok());
+                let pct: Option<f32> = pct.parse().ok();
+                let active = resets_at.is_some() || pct.map(|p| p > 0.0).unwrap_or(false);
+                let w = UsageWindow { pct, tokens: None, resets_at, active };
                 if name == "five" {
                     u.five_hour = Some(w);
                 } else {
@@ -126,8 +129,12 @@ struct ApiWindow {
 
 fn window(w: Option<ApiWindow>) -> Option<UsageWindow> {
     let w = w?;
-    let pct = w.utilization? as f32;
-    Some(UsageWindow { pct: Some(pct.clamp(0.0, 100.0)), tokens: None, resets_at: w.resets_at.as_deref().and_then(parse_rfc3339) })
+    let pct = (w.utilization? as f32).clamp(0.0, 100.0);
+    let resets_at = w.resets_at.as_deref().and_then(parse_rfc3339);
+    // The endpoint reports a window with no reset time and 0% when no block is running
+    // (for example the 5-hour window between sessions). That is "idle", not "0% used".
+    let active = resets_at.is_some() || pct > 0.0;
+    Some(UsageWindow { pct: Some(pct), tokens: None, resets_at, active })
 }
 
 fn read_oauth() -> Result<OAuth, String> {
@@ -175,6 +182,14 @@ impl UsageSource for ClaudeOAuth {
         "oauth"
     }
     fn fetch(&self, _cfg: &UsageCfg) -> Result<Usage, String> {
+        let (status, body, retry) = fetch_raw()?;
+        Self::read(status, &body, retry)
+    }
+}
+
+/// The endpoint's reply as it came: status, body, Retry-After.
+pub fn fetch_raw() -> Result<(u32, Vec<u8>, Option<u32>), String> {
+    {
         let mut oauth = read_oauth()?;
         if expired(&oauth) {
             ask_claude_to_refresh();
@@ -187,11 +202,15 @@ impl UsageSource for ClaudeOAuth {
         let headers = format!("Authorization: Bearer {token}\r\nanthropic-beta: oauth-2025-04-20\r\nAccept: application/json\r\n");
         // drop our copy of the token as soon as the header is built
         unsafe { token.as_bytes_mut().fill(0) };
-        let res = http_get("api.anthropic.com", "/api/oauth/usage", headers);
-        let (status, body, retry) = res?;
+        http_get("api.anthropic.com", "/api/oauth/usage", headers)
+    }
+}
+
+impl ClaudeOAuth {
+    fn read(status: u32, body: &[u8], retry: Option<u32>) -> Result<Usage, String> {
         match status {
             200 => {
-                let api: ApiUsage = serde_json::from_slice(&body).map_err(|_| "usage reply not understood".to_string())?;
+                let api: ApiUsage = serde_json::from_slice(body).map_err(|_| "usage reply not understood".to_string())?;
                 let u = Usage { five_hour: window(api.five_hour), week: window(api.seven_day), source: "api", ..Default::default() };
                 if u.five_hour.is_none() && u.week.is_none() {
                     return Err("usage reply had no limits (plan may not report them)".into());
@@ -452,10 +471,10 @@ impl UsageSource for ClaudeEstimate {
         let week_tokens: u64 = entries.iter().map(|e| e.1).sum();
         let pct = |tokens: u64, limit: u64| (limit > 0).then(|| (tokens as f32 / limit as f32 * 100.0).min(100.0));
         let five = match active_block(&entries, now) {
-            Some((tokens, end)) => UsageWindow { pct: pct(tokens, cfg.estimate_limit_5h_tokens), tokens: Some(tokens), resets_at: Some(end) },
-            None => UsageWindow { pct: pct(0, cfg.estimate_limit_5h_tokens), tokens: Some(0), resets_at: None },
+            Some((tokens, end)) => UsageWindow { pct: pct(tokens, cfg.estimate_limit_5h_tokens), tokens: Some(tokens), resets_at: Some(end), active: true },
+            None => UsageWindow { pct: pct(0, cfg.estimate_limit_5h_tokens), tokens: Some(0), resets_at: None, active: false },
         };
-        let week = UsageWindow { pct: pct(week_tokens, cfg.estimate_limit_week_tokens), tokens: Some(week_tokens), resets_at: None };
+        let week = UsageWindow { pct: pct(week_tokens, cfg.estimate_limit_week_tokens), tokens: Some(week_tokens), resets_at: None, active: true };
         Ok(Usage { five_hour: Some(five), week: Some(week), source: "estimate", ..Default::default() })
     }
 }
@@ -483,6 +502,18 @@ mod tests {
         let w = window(api.five_hour).unwrap();
         assert_eq!(w.pct, Some(42.5));
         assert_eq!(w.resets_at, Some(1_794_668_400));
+        assert!(w.active);
         assert_eq!(window(api.seven_day).unwrap().resets_at, None);
+    }
+
+    #[test]
+    fn inactive_window_is_idle() {
+        // 0% with no reset time = no block running; shown as idle, not "0% used"
+        let api: ApiUsage = serde_json::from_str(r#"{"five_hour":{"utilization":0,"resets_at":null},"seven_day":{"utilization":15,"resets_at":"2026-11-27T09:00:00+00:00"}}"#).unwrap();
+        let five = window(api.five_hour).unwrap();
+        assert_eq!(five.pct, Some(0.0));
+        assert!(!five.active);
+        assert!(!five.has_bar());
+        assert!(window(api.seven_day).unwrap().active);
     }
 }

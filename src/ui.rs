@@ -353,7 +353,7 @@ fn collapsed_vertical(a: &App, g: &Gfx, t: &Theme, x: f32, y: f32, w: f32, h: f3
     let cx = sx + VPILL_W / 2.0;
     let mut bottom = top + VPILL_H - 12.0;
 
-    if let Some(p) = a.usage.five_hour.as_ref().and_then(|u| u.pct) {
+    if let Some(p) = a.usage.five_hour.as_ref().filter(|u| u.has_bar()).and_then(|u| u.pct) {
         let bh = 26.0;
         bottom -= bh;
         g.fill_rr(cx - 2.0, bottom, 4.0, bh, 2.0, t.track);
@@ -400,7 +400,7 @@ fn collapsed(a: &App, g: &Gfx, t: &Theme, x: f32, y: f32, w: f32) {
     let mut rx = right - 14.0;
 
     // tiny usage bar (5-hour window)
-    if let Some(p) = a.usage.five_hour.as_ref().and_then(|u| u.pct) {
+    if let Some(p) = a.usage.five_hour.as_ref().filter(|u| u.has_bar()).and_then(|u| u.pct) {
         let bw = 34.0;
         rx -= bw;
         g.fill_rr(rx, cy - 2.0, bw, 4.0, 2.0, t.track);
@@ -610,8 +610,8 @@ fn expanded(a: &App, g: &Gfx, t: &Theme, x: f32, y: f32, w: f32, hits: &mut Vec<
     if hov(&Action::Usage) {
         g.fill_rr(x + 6.0, cy + 2.0, w - 12.0, 44.0, 12.0, t.hover);
     }
-    let has_pct = |u: &Option<UsageWindow>| u.as_ref().map(|u| u.pct.is_some()).unwrap_or(false);
-    if !has_pct(&a.usage.five_hour) && !has_pct(&a.usage.week) {
+    let has_row = |u: &Option<UsageWindow>| u.as_ref().map(|u| u.has_bar() || !u.active).unwrap_or(false);
+    if !has_row(&a.usage.five_hour) && !has_row(&a.usage.week) {
         // no percentages to show: say why in one line instead of raw token counts
         let first = if a.usage.loading { "Usage limits: loading…" } else { "Usage limits: not available right now" };
         let why = a.usage.note.split(';').next().unwrap_or("").trim();
@@ -659,6 +659,10 @@ fn usage_row(g: &Gfx, t: &Theme, x: f32, y: f32, w: f32, label: &str, u: Option<
     let bar_x = x + 54.0;
     let bar_w = if narrow { 64.0 } else { 104.0 };
     let mut tx = bar_x;
+    if !u.active {
+        g.text("idle · no active block", Font::Small, bar_x, y, 180.0, 18.0, Align::Left, t.dim);
+        return;
+    }
     if let Some(p) = u.pct {
         g.fill_rr(bar_x, y + 7.0, bar_w, 4.0, 2.0, t.track);
         let c = if p < 60.0 { t.text.a(0.85) } else { usage_color(p, t) };

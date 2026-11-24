@@ -4,9 +4,13 @@ public struct UsageWindow: Equatable {
     /// 0...100
     public var pct: Double
     public var resetsAt: UInt64?
-    public init(pct: Double, resetsAt: UInt64?) {
+    /// False when the endpoint reports this window as not currently running (no block).
+    /// Such a window reads 0% and is shown as "idle" rather than a bar.
+    public var active: Bool
+    public init(pct: Double, resetsAt: UInt64?, active: Bool = true) {
         self.pct = pct
         self.resetsAt = resetsAt
+        self.active = active
     }
 }
 
@@ -30,7 +34,9 @@ public enum UsageAPI {
         guard let j = JSON.parse(data) else { return nil }
         func window(_ key: String) -> UsageWindow? {
             guard let w = j[key], let u = w["utilization"]?.double else { return nil }
-            return UsageWindow(pct: min(100, max(0, u)), resetsAt: parseTimestamp(w.str("resets_at")))
+            let pct = min(100, max(0, u))
+            let resetsAt = parseTimestamp(w.str("resets_at"))
+            return UsageWindow(pct: pct, resetsAt: resetsAt, active: resetsAt != nil || pct > 0)
         }
         var u = Usage()
         u.fiveHour = window("five_hour")

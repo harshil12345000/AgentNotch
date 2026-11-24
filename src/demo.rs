@@ -32,8 +32,8 @@ pub fn fill(a: &mut App) {
         a.store.apply(e);
     }
     a.usage = Usage {
-        five_hour: Some(UsageWindow { pct: Some(72.0), tokens: None, resets_at: Some(now + 2 * 3600 + 13 * 60) }),
-        week: Some(UsageWindow { pct: Some(34.0), tokens: None, resets_at: Some(now + 3 * 86400 + 5 * 3600) }),
+        five_hour: Some(UsageWindow { pct: Some(72.0), tokens: None, resets_at: Some(now + 2 * 3600 + 13 * 60), active: true }),
+        week: Some(UsageWindow { pct: Some(34.0), tokens: None, resets_at: Some(now + 3 * 86400 + 5 * 3600), active: true }),
         source: "api",
         note: String::new(),
         fetched_at: now,

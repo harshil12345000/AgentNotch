@@ -261,7 +261,12 @@ final class CoreTests: XCTestCase {
     func testUsageAndCredentials() {
         let u = UsageAPI.parse(Data(#"{"five_hour":{"utilization":42.5,"resets_at":"2026-11-14T15:00:00+00:00"},"seven_day":{"utilization":7,"resets_at":null},"extra_usage":{"is_enabled":false}}"#.utf8))!
         XCTAssertEqual(u.fiveHour, UsageWindow(pct: 42.5, resetsAt: 1_794_668_400))
+        XCTAssertEqual(u.fiveHour?.active, true)
         XCTAssertEqual(u.week?.resetsAt, nil)
+        // a window with 0% and no reset time is reported idle, not "0% used"
+        let idle = UsageAPI.parse(Data(#"{"five_hour":{"utilization":0,"resets_at":null},"seven_day":{"utilization":15,"resets_at":"2026-11-27T09:00:00+00:00"}}"#.utf8))!
+        XCTAssertEqual(idle.fiveHour?.active, false)
+        XCTAssertEqual(idle.week?.active, true)
         XCTAssertNil(UsageAPI.parse(Data("{}".utf8)))
         let live = UsageAPI.token(from: Data(#"{"claudeAiOauth":{"accessToken":"abc","expiresAt":\#((nowUnix() + 3600) * 1000)}}"#.utf8))
         XCTAssertEqual(live?.token, "abc")

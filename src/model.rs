@@ -488,7 +488,7 @@ impl Store {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct UsageWindow {
     /// 0..100 when known.
     pub pct: Option<f32>,
@@ -496,6 +496,22 @@ pub struct UsageWindow {
     pub tokens: Option<u64>,
     /// Unix seconds.
     pub resets_at: Option<u64>,
+    /// False when the endpoint reports this window as not currently active (no block
+    /// running). An inactive window reads 0%, which is shown as "idle" rather than a bar.
+    pub active: bool,
+}
+
+impl Default for UsageWindow {
+    fn default() -> Self {
+        Self { pct: None, tokens: None, resets_at: None, active: true }
+    }
+}
+
+impl UsageWindow {
+    /// A window the UI can draw a bar for: active, with a known percentage.
+    pub fn has_bar(&self) -> bool {
+        self.active && self.pct.is_some()
+    }
 }
 
 #[derive(Clone, Debug, Default)]

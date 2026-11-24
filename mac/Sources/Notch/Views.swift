@@ -239,7 +239,10 @@ struct UsageRow: View {
     var body: some View {
         HStack(spacing: 10) {
             Text(label).font(.ui(11)).foregroundColor(Palette.dim).frame(width: 34, alignment: .leading)
-            if let w = window {
+            if let w = window, !w.active {
+                Text("idle · no active block").font(.ui(11)).foregroundColor(Palette.dim)
+                Spacer()
+            } else if let w = window {
                 let color: Color = w.pct > 90 ? Palette.red : (w.pct >= 60 ? Palette.amber : .white.opacity(0.85))
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
@@ -425,7 +428,7 @@ struct CollapsedView: View {
                 Spacer(minLength: 0)
                 if state.remote != .off { Image(systemName: "iphone").font(.system(size: 10)).foregroundColor(Palette.blue) }
                 if state.awake { Image(systemName: "sun.max.fill").font(.system(size: 10)).foregroundColor(Palette.amber) }
-                if let w = state.usage.fiveHour {
+                if let w = state.usage.fiveHour, w.active {
                     ZStack(alignment: .leading) {
                         Capsule().fill(Color.white.opacity(0.16)).frame(width: 30, height: 4)
                         Capsule().fill(w.pct > 90 ? Palette.red : (w.pct >= 60 ? Palette.amber : .white.opacity(0.8))).frame(width: max(3, 30 * w.pct / 100), height: 4)
