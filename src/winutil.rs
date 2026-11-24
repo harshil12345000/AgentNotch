@@ -253,8 +253,10 @@ pub fn allow_running_instance_foreground() {
     }
 }
 
+/// The window's title is how one copy finds another. It is never shown, and it keeps the
+/// app's first name so a new copy can find and close one from before the rename.
 pub fn window_title() -> String {
-    format!("AgentNotch{}", crate::util::instance_suffix())
+    format!("Notch{}", crate::util::instance_suffix())
 }
 
 /// Ask an already running island to close cleanly.
