@@ -374,11 +374,15 @@ Checked on the development machine:
 macOS, checked by the automated Mac build: it compiles for Apple silicon and Intel, its
 16 unit tests pass (hook installer round trip, session rules, transcript and registry
 parsing, and the socket carrying an Approve back to a waiting hook), and the running app
-was captured on a real macOS desktop, collapsed and open.
+was captured on a real macOS desktop, collapsed and open. A second automated run does what
+a new user does: the one-line installer, and opening the downloaded zip, which moves the
+app to `~/Applications` and connects the Claude Code hooks with an existing hook left
+first. It then sends a simulated session through the hooks and approves a permission
+request, and the waiting hook receives the allow response.
 
 macOS, not verified: nobody has used it by hand. Hover, clicking, real sessions, Keep
-Awake, Remote Control, notifications, the Keychain prompt and self-install to
-`~/Applications` have only been compiled, not exercised.
+Awake, Remote Control, notifications and the Keychain prompt have only been compiled, not
+exercised.
 
 Not verified (Windows):
 
