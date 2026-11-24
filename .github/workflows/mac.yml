@@ -1,0 +1,56 @@
+name: mac
+
+on:
+  push:
+    branches: [build]
+    paths: ['mac/**', '.github/workflows/mac.yml']
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: swift --version
+
+      - name: Test
+        working-directory: mac
+        run: swift test
+
+      - name: Build the app
+        working-directory: mac
+        run: chmod +x bundle.sh && ./bundle.sh
+
+      - name: Render snapshots (no window)
+        working-directory: mac
+        run: |
+          mkdir -p shots
+          B=dist/Notch.app/Contents/MacOS/Notch
+          "$B" --snapshot shots/collapsed.png
+          "$B" --snapshot shots/expanded.png --expanded
+          "$B" --snapshot shots/settings.png --settings
+          "$B" --status || true
+
+      - name: Run the app and capture the screen
+        working-directory: mac
+        run: |
+          open -n dist/Notch.app --args --demo --expanded || true
+          sleep 6
+          screencapture -x shots/screen-expanded.png || true
+          pkill -x Notch || true
+          sleep 1
+          open -n dist/Notch.app --args --demo || true
+          sleep 5
+          screencapture -x shots/screen-collapsed.png || true
+          pkill -x Notch || true
+          ls -la shots
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: notch-mac
+          path: |
+            mac/dist/Notch-mac.zip
+            mac/shots
