@@ -56,6 +56,32 @@ jobs:
           cd "$GITHUB_WORKSPACE" && mkdir -p shots && screencapture -x shots/after-zip.png || true
           tail -5 "$HOME/Library/Application Support/Notch/notch.log" || true
 
+      - name: Find where the app stops
+        run: |
+          B="$HOME/Applications/Notch.app/Contents/MacOS/Notch"
+          pkill -x Notch || true; sleep 1
+          "$B" > /tmp/app.out 2>&1 &
+          sleep 5
+          chk() { if pgrep -x Notch >/dev/null; then echo "alive after: $1"; else echo "DEAD after: $1"; fi; }
+          chk "start"
+          echo '{"session_id":"ci-2","cwd":"/tmp/demo","hook_event_name":"UserPromptSubmit"}' | "$B" --hook; sleep 2; chk "UserPromptSubmit"
+          echo '{"session_id":"ci-2","cwd":"/tmp/demo","hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"swift test"}}' | "$B" --hook; sleep 2; chk "PreToolUse"
+          (echo '{"session_id":"ci-2","cwd":"/tmp/demo","hook_event_name":"PermissionRequest","tool_name":"Bash","tool_input":{"command":"git push"}}' | "$B" --hook > /tmp/decision2.txt) &
+          sleep 3; chk "PermissionRequest"
+          screencapture -x "$GITHUB_WORKSPACE/shots/pending.png" || true
+          "$B" --decide ci-2 allow || true
+          sleep 2; chk "decide"
+          echo "permission hook returned: $(cat /tmp/decision2.txt)"
+          echo '{"session_id":"ci-2","cwd":"/tmp/demo","hook_event_name":"Stop"}' | "$B" --hook; sleep 2; chk "Stop"
+          sleep 12
+          echo "--- app output"; cat /tmp/app.out
+          echo "--- crash reports"; ls -la "$HOME/Library/Logs/DiagnosticReports/" 2>/dev/null || true
+          for f in "$HOME"/Library/Logs/DiagnosticReports/Notch*; do
+            [ -f "$f" ] || continue
+            grep -o -E '"(type|signal|indicator|symbol)" ?: ?"[^"]*"' "$f" | head -70
+          done
+          tail -8 "$HOME/Library/Application Support/Notch/notch.log" || true
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
