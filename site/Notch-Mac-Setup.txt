@@ -1,0 +1,92 @@
+NOTCH FOR MAC - SETUP
+=====================
+
+Notch needs macOS 13 or later. Setup takes about a minute.
+
+
+THE EASY WAY (recommended)
+--------------------------
+Open the Terminal app, paste this line and press Return:
+
+    curl -fsSL https://agentnotch-six.vercel.app/install.sh | sh
+
+That is all. Notch appears at the top of your screen. You can skip the rest
+of this file and delete the zip you downloaded.
+
+
+THE MANUAL WAY (using the zip you downloaded)
+---------------------------------------------
+1. Double-click Notch-mac.zip to unzip it. You get the Notch app.
+
+2. Right-click (or Control-click) Notch and choose Open.
+   Do not double-click it the first time: macOS blocks apps that are not
+   notarized by Apple, and a double-click only shows a warning.
+
+3. In the dialog, click Open.
+
+   If there is no Open button (macOS 15 and later):
+     - Open System Settings > Privacy & Security.
+     - Scroll down to the line that says Notch was blocked.
+     - Click Open Anyway, then confirm.
+     - Open Notch again.
+
+4. Notch moves itself into your Applications folder (the one in your home
+   folder) and starts. You can delete the zip and the unzipped copy.
+
+
+WHAT HAPPENS ON FIRST LAUNCH
+----------------------------
+- Notch appears at the top centre of the screen. Move the pointer onto it
+  to open it.
+- It connects itself to Claude Code and Codex if they are installed. Your
+  own hooks are kept, and a backup of the settings file is saved.
+- It is set to start when you log in. You can turn that off from the Notch
+  icon in the menu bar.
+- Sessions that were already open show up at once. They report live
+  details after you restart them.
+
+
+PROMPTS YOU MAY SEE
+-------------------
+- "Notch wants to use your confidential information stored in Claude
+  Code-credentials": this lets Notch show your usage limits. Click Always
+  Allow, or Deny if you do not want usage shown. Everything else works
+  either way.
+- Notifications: allow them if you want a banner when an agent needs you.
+- Codex asks once to trust the new hooks. Type /hooks in Codex and accept.
+- Keep Awake asks for your Mac password, because stopping a closed lid from
+  sleeping the Mac is a system-wide setting.
+
+
+GOOD TO KNOW
+------------
+- Hide or show Notch: Control + \
+- Menu bar icon: show or hide, clear finished sessions, quit.
+- Notch docks at the top of the screen only on the Mac.
+
+
+IF SOMETHING GOES WRONG
+-----------------------
+- "Notch is damaged and can't be opened": open Terminal and run
+      xattr -dr com.apple.quarantine ~/Downloads/Notch.app
+  then open Notch again. Or use the easy way at the top of this file.
+- Nothing appears: look for the Notch icon in the menu bar and choose
+  Show / Hide, or press Control + \.
+- No sessions listed: start a Claude Code or Codex session. Only sessions
+  that are open right now are shown.
+
+
+REMOVE NOTCH
+------------
+In Terminal:
+
+    ~/Applications/Notch.app/Contents/MacOS/Notch --uninstall-hooks
+    ~/Applications/Notch.app/Contents/MacOS/Notch --uninstall-hooks --codex
+
+Then quit Notch from its menu bar icon and delete:
+
+    ~/Applications/Notch.app
+    ~/Library/Application Support/Notch
+
+
+Source and help: https://github.com/harshil12345000/AgentNotch

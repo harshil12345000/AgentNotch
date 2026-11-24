@@ -20,7 +20,8 @@ curl -fsSL "$URL" -o "$TMP/Notch-mac.zip"
 mkdir -p "$HOME/Applications"
 pkill -x Notch 2>/dev/null || true
 rm -rf "$HOME/Applications/Notch.app"
-ditto -x -k "$TMP/Notch-mac.zip" "$HOME/Applications"
+ditto -x -k "$TMP/Notch-mac.zip" "$TMP/x"
+ditto "$TMP/x/Notch.app" "$HOME/Applications/Notch.app"
 xattr -dr com.apple.quarantine "$HOME/Applications/Notch.app" 2>/dev/null || true
 
 open "$HOME/Applications/Notch.app"

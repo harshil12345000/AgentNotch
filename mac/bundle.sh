@@ -29,6 +29,12 @@ rm -rf "$ICONSET"
 # so Gatekeeper still asks the first time (right-click the app, then Open).
 codesign --force --deep --sign - "$APP"
 
-(cd dist && ditto -c -k --keepParent Notch.app Notch-mac.zip)
+# the download: the app and the setup instructions, side by side
+PKG="dist/pkg"
+rm -rf "$PKG" && mkdir -p "$PKG"
+ditto "$APP" "$PKG/Notch.app"
+cp Resources/Notch-Mac-Setup.txt "$PKG/READ ME FIRST - Notch Setup.txt"
+(cd dist && ditto -c -k pkg Notch-mac.zip)
+rm -rf "$PKG"
 echo "built $APP and dist/Notch-mac.zip"
 lipo -archs "$APP/Contents/MacOS/Notch"
