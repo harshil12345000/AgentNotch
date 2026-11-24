@@ -24,8 +24,10 @@ jobs:
           curl -fsSL -o Notch-mac.zip https://github.com/harshil12345000/AgentNotch/releases/latest/download/Notch-mac.zip
           ditto -x -k Notch-mac.zip .
           mkdir -p "$HOME/.claude" && echo '{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"echo mine"}]}]}}' > "$HOME/.claude/settings.json"
+          mkdir -p "$HOME/Library/Application Support/Notch" && echo '{"approveInTerminal": true}' > "$HOME/Library/Application Support/Notch/config.json"
           open Notch.app
           sleep 8
+          mkdir -p "$GITHUB_WORKSPACE/shots" && screencapture -x "$GITHUB_WORKSPACE/shots/after-launch.png" || true
           pgrep -lf "$HOME/Applications/Notch.app" || (echo "did not relocate to ~/Applications" && exit 1)
           echo "--- hooks after first launch"
           "$HOME/Applications/Notch.app/Contents/MacOS/Notch" --hooks-status
@@ -41,6 +43,20 @@ jobs:
           "$B" --decide ci-1 allow || true
           sleep 2
           echo "permission hook returned: $(cat /tmp/decision.txt)"
+          echo "--- still running?"
+          pgrep -lf "Applications/Notch.app" || echo "NOTCH IS NOT RUNNING ANY MORE"
+          ls "$HOME/Library/Logs/DiagnosticReports/" 2>/dev/null | grep -i notch || echo "no crash reports"
+          for f in "$HOME"/Library/Logs/DiagnosticReports/Notch*; do [ -f "$f" ] && python3 -c "
+import json,sys
+t=open(sys.argv[1]).read().split('
+',1)
+try:
+    b=json.loads(t[1]); e=b.get('exception',{}); print('exception:', e.get('type'), e.get('signal'), b.get('termination',{}).get('indicator'))
+    th=[x for x in b.get('threads',[]) if x.get('triggered')][0]
+    imgs=b.get('usedImages',[])
+    for fr in th.get('frames',[])[:14]: print('  ', imgs[fr['imageIndex']].get('name','?'), fr.get('symbol','?'))
+except Exception as ex: print('could not parse', ex); print(t[1][:1500])
+" "$f"; done
           cd "$GITHUB_WORKSPACE" && mkdir -p shots && screencapture -x shots/after-zip.png || true
           tail -5 "$HOME/Library/Application Support/Notch/notch.log" || true
 
