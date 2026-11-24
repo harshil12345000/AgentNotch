@@ -93,9 +93,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             refreshToggles(scan: true)
             Hotkey.action = { [weak self] in self?.toggleHidden() }
             Hotkey.set(state.config.hotkey)
-            state.refreshUsage(force: true)
-            Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in self?.state.refreshUsage(force: false) }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in self?.offerHooks() }
+            // Usage is first fetched when the panel is opened (that is when macOS may ask for
+            // Keychain access); after that it refreshes every five minutes.
+            Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
+                if self?.state.usage.fetchedAt != 0 { self?.state.refreshUsage(force: false) }
+            }
+            autoSetup()
         }
         if startExpanded { setExpanded(true, pinned: true) }
         logLine("notch started")
@@ -374,19 +377,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         state.hooksInstalled = Hooks.installed(Hooks.claudeSettings)
     }
 
-    /// First run: offer to install the hooks. Asked once.
-    private func offerHooks() {
-        guard !state.config.hooksPrompted else { return }
-        state.config.hooksPrompted = true
-        state.saveConfig()
-        if state.hooksInstalled { return }
-        let a = NSAlert()
-        a.messageText = "Install Claude Code hooks so sessions update live?"
-        a.informativeText = "This adds entries to ~/.claude/settings.json after your existing hooks. A backup is saved first, and you can remove them again in Notch's settings."
-        a.addButton(withTitle: "Install")
-        a.addButton(withTitle: "Not now")
-        NSApp.activate(ignoringOtherApps: true)
-        if a.runModal() == .alertFirstButtonReturn { toggleHooks() }
+    /// Connect to the agents on this Mac with no questions asked: add Notch's hooks to
+    /// Claude Code and Codex (after any existing hooks, with a backup, removable in
+    /// Settings) and start at login. Done once; after that only a moved app is repaired.
+    private func autoSetup() {
+        let fm = FileManager.default
+        let exe = CLI.executable
+        let targets: [(String, Bool, Hooks.Target)] = [
+            ("Claude Code", fm.fileExists(atPath: Claude.configDir.path), Hooks.claudeTarget(exe: exe)),
+            ("Codex", fm.fileExists(atPath: Codex.home.path), Codex.target(exe: exe)),
+        ]
+        let first = !state.config.hooksPrompted
+        for (name, present, target) in targets where present {
+            let current = Hooks.installedCommand(target.settings)
+            // first run: install. Later: only fix hooks that point at an old location.
+            guard (first && current == nil) || (current != nil && current != exe) else { continue }
+            do {
+                try Hooks.install(target)
+                logLine("setup: \(name) hooks connected")
+            } catch {
+                logLine("setup: \(name) hooks not installed: \(error)")
+            }
+        }
+        if first {
+            state.config.hooksPrompted = true
+            state.saveConfig()
+            try? SMAppService.mainApp.register()
+        }
+        state.hooksInstalled = Hooks.installed(Hooks.claudeSettings)
     }
 
     // MARK: control messages, housekeeping, menu
@@ -433,6 +451,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func menuQuit() { NSApp.terminate(nil) }
 }
 
+/// A downloaded app runs from a temporary, read-only location until it is moved. Hooks and
+/// "start at login" need a path that stays put, so on first launch Notch copies itself to
+/// ~/Applications and continues from there.
+enum SelfInstall {
+    static func relocateIfNeeded() -> Bool {
+        let bundle = Bundle.main.bundlePath
+        guard bundle.hasSuffix(".app") else { return false } // a bare binary (development, CI)
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        if bundle.hasPrefix("/Applications/") || bundle.hasPrefix(home + "/Applications/") { return false }
+        let dir = home + "/Applications"
+        let dest = dir + "/Notch.app"
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        // quit a copy that is already running from there, so it can be replaced
+        _ = CLI.control(.object([.init("quit", .bool(true))]))
+        Thread.sleep(forTimeInterval: 0.6)
+        try? FileManager.default.removeItem(atPath: dest)
+        guard runTool("/usr/bin/ditto", [bundle, dest], timeout: 60) != nil else {
+            logLine("self-install: could not copy to \(dest); running in place")
+            return false
+        }
+        _ = runTool("/usr/bin/xattr", ["-dr", "com.apple.quarantine", dest])
+        guard runTool("/usr/bin/open", ["-n", dest]) != nil else { return false }
+        logLine("self-install: moved to \(dest)")
+        return true
+    }
+}
+
 /// Made-up sessions for screenshots and demos.
 enum Demo {
     static func fill(_ state: AppState) {
@@ -477,6 +522,7 @@ enum AppMain {
             snapshot(to: out, expanded: args.contains("--expanded"), settings: args.contains("--settings"), font: after("--font"))
             return
         }
+        if !args.contains("--demo"), !args.contains("--no-install"), SelfInstall.relocateIfNeeded() { return }
         // already running: ask that one to show itself instead of starting twice
         if !args.contains("--demo"), CLI.control(.object([.init("summon", .bool(true))])) { return }
         let app = NSApplication.shared

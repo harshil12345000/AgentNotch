@@ -116,6 +116,22 @@ public enum Hooks {
         return removed
     }
 
+    /// The program our installed hooks run, if they are installed.
+    public static func installedCommand(_ settings: URL) -> String? {
+        guard let data = try? Data(contentsOf: settings), let v = try? parse(data), let hooks = v["hooks"]?.members else { return nil }
+        for event in hooks {
+            for g in event.value.array ?? [] {
+                if let h = (g["hooks"]?.array ?? []).first(where: isOurs) {
+                    let c = h.str("command")
+                    // exec form holds the path alone; shell form is "\"path\" --hook ..."
+                    if c.hasPrefix("\""), let end = c.dropFirst().firstIndex(of: "\"") { return String(c[c.index(after: c.startIndex) ..< end]) }
+                    return c
+                }
+            }
+        }
+        return nil
+    }
+
     public static func installed(_ settings: URL) -> Bool {
         guard let data = try? Data(contentsOf: settings), let v = try? parse(data), let hooks = v["hooks"]?.members else { return false }
         for event in hooks {

@@ -8,8 +8,9 @@ struct Config: Codable {
     var hooksPrompted = false
     var keepAwake = false
     var travelMode = false
-    /// Off by default: reading the sign-in makes macOS ask for Keychain access.
-    var showUsage = false
+    /// On by default. The first time the panel is opened macOS asks once to let Notch read
+    /// the Claude sign-in from the Keychain.
+    var showUsage = true
     var notifications = true
     var sound = true
     var autoExpand = true

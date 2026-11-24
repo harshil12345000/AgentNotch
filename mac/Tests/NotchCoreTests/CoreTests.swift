@@ -33,6 +33,7 @@ final class CoreTests: XCTestCase {
         let t = Hooks.claudeTarget(exe: "/Applications/Notch.app/Contents/MacOS/Notch", settings: file)
         try Hooks.install(t)
         XCTAssertTrue(Hooks.installed(file))
+        XCTAssertEqual(Hooks.installedCommand(file), "/Applications/Notch.app/Contents/MacOS/Notch")
         let v = JSON.parse(try Data(contentsOf: file))!
         let pre = v["hooks"]!["PreToolUse"]!.array!
         XCTAssertEqual(pre.count, 2)

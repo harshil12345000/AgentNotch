@@ -414,11 +414,12 @@ struct CollapsedView: View {
                 if state.store.sessions.isEmpty {
                     Circle().fill(Palette.dim.opacity(0.6)).frame(width: 6, height: 6)
                 } else {
-                    Text("\(state.store.activeCount)").font(.ui(12, .semibold)).foregroundColor(.white)
-                    ForEach(state.store.sessions.prefix(4)) { s in StatusDot(state: s.state, pulsing: s.pulsing(now), size: 7) }
+                    Text("\(state.store.activeCount)").font(.ui(12, .semibold)).foregroundColor(.white).fixedSize()
+                    ForEach(state.store.sessions.prefix(3)) { s in StatusDot(state: s.state, pulsing: s.pulsing(now), size: 7) }
+                    if state.store.sessions.count > 3 { Image(systemName: "chevron.down").font(.system(size: 7, weight: .bold)).foregroundColor(Palette.dim) }
                 }
                 Spacer(minLength: 0)
-            }.padding(.leading, 14).frame(width: Metrics.wing)
+            }.padding(.leading, 12).frame(width: Metrics.wing)
             Spacer(minLength: state.hardwareNotchWidth)
             HStack(spacing: 6) {
                 Spacer(minLength: 0)

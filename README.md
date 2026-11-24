@@ -1,16 +1,17 @@
 # Notch
 
-**A tiny Mac-style notch for Windows that shows your AI coding agents at a glance.**
+**A tiny notch for Windows and macOS that shows your AI coding agents at a glance.**
 
 Notch sits flush against a screen edge, opens when you hover it, and tells you which
 sessions are working, which are waiting on you, and which have finished. It follows Claude
 Code (terminal and desktop app), Codex and T3 Code, shows your usage limits, and lets you
 approve a permission request without switching windows.
 
-Native Rust and Direct2D. One self-contained exe of about 1 MB. No installer, no runtime,
-no telemetry.
+Native on both platforms (Rust and Direct2D on Windows, Swift on macOS), about 1 MB, and
+nothing to set up: on first launch it installs itself and connects to the agents it finds.
+No telemetry.
 
-[**Website**](https://agentnotch-six.vercel.app) · [**Download for Windows**](https://github.com/harshil12345000/AgentNotch/releases/latest/download/notch.exe) · [Releases](https://github.com/harshil12345000/AgentNotch/releases)
+[**Website**](https://agentnotch-six.vercel.app) · [**Download for Windows**](https://github.com/harshil12345000/AgentNotch/releases/latest/download/notch.exe) · [**Download for Mac**](https://github.com/harshil12345000/AgentNotch/releases/latest/download/Notch-mac.zip) · [Releases](https://github.com/harshil12345000/AgentNotch/releases)
 
 ![Notch open at the top of the screen, with the side tab on the right edge](docs/screenshots/hero.png)
 
@@ -70,34 +71,76 @@ no telemetry.
 
 ## Install
 
-Requires Windows 10 or 11 (64-bit).
+There is nothing to configure. On first launch Notch installs itself, connects to the
+agents it finds, and starts with your computer.
 
-1. Download [`notch.exe`](https://github.com/harshil12345000/AgentNotch/releases/latest/download/notch.exe).
-2. Run it from a terminal with `--install`:
+### Windows 10 and 11
 
-   ```
-   notch.exe --install
-   ```
+Download [`notch.exe`](https://github.com/harshil12345000/AgentNotch/releases/latest/download/notch.exe)
+and double-click it.
 
-   This copies it to `%LOCALAPPDATA%\Programs\Notch`, adds a **Notch** shortcut to the
-   Desktop and the Start Menu, and starts it. It needs no administrator rights.
-3. When it asks, let it install the Claude Code hooks (see [below](#claude-code-hooks)).
+It copies itself to `%LOCALAPPDATA%\Programs\Notch`, adds a **Notch** shortcut to the
+Desktop and the Start Menu, and starts. No administrator rights are needed. The exe is not
+code-signed, so SmartScreen may warn the first time: choose **More info**, then
+**Run anyway**.
 
-You can also just double-click `notch.exe` to try it without installing anything.
+To pin it to the taskbar, right-click the Notch shortcut and choose **Pin to taskbar**
+(Windows does not let an app pin itself).
 
-The exe is not code-signed, so Windows SmartScreen may warn the first time: choose
-**More info**, then **Run anyway**. If you would rather not trust a download, [build it
-from source](#build-from-source).
+### macOS 13 or later
 
-**Taskbar.** Windows does not let an app pin itself. Right-click the Notch shortcut and
-choose **Pin to taskbar**. Notch has no taskbar window of its own; clicking the pinned icon
-while it is running shows the notch and opens it.
+Paste this into Terminal:
 
-**Remove.** `notch.exe --uninstall-hooks`, then `notch.exe --uninstall`, then delete
-`%LOCALAPPDATA%\Programs\Notch` and `%APPDATA%\Notch`.
+```
+curl -fsSL https://agentnotch-six.vercel.app/install.sh | sh
+```
 
-**macOS.** There is no Mac version. Notch is written against the Windows graphics and
-window APIs.
+It downloads the app into `~/Applications` and starts it. Or download
+[`Notch-mac.zip`](https://github.com/harshil12345000/AgentNotch/releases/latest/download/Notch-mac.zip),
+unzip it and open Notch; it then moves itself to `~/Applications`. The app is not
+notarized by Apple, so opening a browser download needs your approval the first time:
+right-click the app and choose **Open** (on newer macOS: System Settings > Privacy &
+Security > **Open Anyway**). The Terminal command avoids that prompt.
+
+### What first launch does
+
+- **Claude Code:** adds Notch's hooks to `~/.claude/settings.json`, if Claude Code is
+  installed. See [Claude Code hooks](#claude-code-hooks): your own hooks stay first and
+  untouched, a backup is saved, and removing the hooks restores the file exactly.
+- **Codex:** the same for `~/.codex/hooks.json`, if Codex is installed. Codex asks you
+  once to review and trust new hooks (`/hooks`).
+- **T3 Code** needs nothing: Notch reads its state directly.
+- **Start with the computer:** switched on. Switch it off from the tray or menu bar icon.
+- **macOS only:** the first time you open the panel, the system asks once to let Notch
+  read your Claude sign-in from the Keychain, which the usage limits need. Decline and
+  everything else still works.
+
+Sessions are listed even before any of this, from Claude Code's own registry of open
+sessions. Sessions that were already running pick the hooks up when they are next started.
+
+### Remove
+
+Windows: `notch.exe --uninstall-hooks`, `notch.exe --uninstall-hooks --codex`,
+`notch.exe --uninstall`, then delete `%LOCALAPPDATA%\Programs\Notch` and `%APPDATA%\Notch`.
+
+macOS: `~/Applications/Notch.app/Contents/MacOS/Notch --uninstall-hooks` (and again with
+`--codex`), quit Notch, then delete `~/Applications/Notch.app` and
+`~/Library/Application Support/Notch`.
+
+### The Mac version
+
+The Mac app is a separate native app in [`mac/`](mac) that shares the design and the
+tracking logic. Differences from Windows today:
+
+- It docks at the top centre of the screen only (around the camera housing on MacBooks
+  that have one). Other edges are Windows-only for now.
+- Keep Awake prevents idle sleep without asking; stopping a closed lid from sleeping the
+  Mac is a system-wide switch (`pmset disablesleep`), so macOS asks for an administrator
+  password when you turn Keep Awake on or off.
+- Travel Mode's reminder button opens Wi-Fi settings.
+- Agent badges are letters rather than logos, and the hotkey is fixed at Ctrl+\.
+
+![Notch on macOS](docs/screenshots/mac-expanded.png)
 
 ## Using it
 
@@ -145,8 +188,9 @@ Checked against Claude Code 2.1.319 and 2.1.325.
 
 ## Claude Code hooks
 
-Hooks make sessions update the instant something happens. Install them when Notch first
-asks, from Settings > "Claude Code hooks", or with `notch.exe --install-hooks`.
+Hooks make sessions update the instant something happens. Notch installs them on first
+launch; you can also do it from Settings > "Claude Code hooks" or with
+`notch.exe --install-hooks`.
 
 What this does to `~/.claude/settings.json`:
 
@@ -160,7 +204,7 @@ What this does to `~/.claude/settings.json`:
   exits. If Notch is not running it exits immediately. The one exception is
   PermissionRequest, which waits so it can carry your answer back (next section).
 
-Uninstalling (`notch.exe --uninstall-hooks`, or Settings) restores the file byte for byte
+They are installed automatically on first launch. Uninstalling (`notch.exe --uninstall-hooks`, or Settings) restores the file byte for byte
 from the backup if you changed nothing else in the meantime; otherwise only Notch's entries
 are removed.
 
@@ -278,7 +322,7 @@ Set `NOTCH_INSTANCE=name` to run a second, isolated notch next to the real one f
 
 ## Build from source
 
-Needs the Rust toolchain (MSVC) and the Windows SDK.
+Windows (Rust toolchain with MSVC, and the Windows SDK):
 
 ```
 git clone https://github.com/harshil12345000/AgentNotch
@@ -287,6 +331,17 @@ cargo build --release
 cargo test --release
 target\release\notch.exe --install
 ```
+
+macOS (Xcode command line tools, Swift 5.9 or later):
+
+```
+cd AgentNotch/mac
+swift test
+./bundle.sh          # builds dist/Notch.app (Apple silicon + Intel) and dist/Notch-mac.zip
+```
+
+Every push that touches `mac/` is built, tested and screenshotted on a Mac by
+[GitHub Actions](.github/workflows/mac.yml).
 
 ### Adding an adapter
 
@@ -316,7 +371,16 @@ Checked on the development machine:
   allow and deny responses Claude Code documents.
 - 42 unit tests.
 
-Not verified:
+macOS, checked by the automated Mac build: it compiles for Apple silicon and Intel, its
+16 unit tests pass (hook installer round trip, session rules, transcript and registry
+parsing, and the socket carrying an Approve back to a waiting hook), and the running app
+was captured on a real macOS desktop, collapsed and open.
+
+macOS, not verified: nobody has used it by hand. Hover, clicking, real sessions, Keep
+Awake, Remote Control, notifications, the Keychain prompt and self-install to
+`~/Applications` have only been compiled, not exercised.
+
+Not verified (Windows):
 
 - Approve / Deny on a real permission prompt, and a real toast being clicked.
 - That the desktop app switches to a different session when its link is opened (Windows

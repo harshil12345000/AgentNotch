@@ -1048,21 +1048,35 @@ impl App {
     }
 
     /// First run: offer to install the hooks. Asked once.
+    /// First run: connect to the agents that are on this PC, with no questions asked.
+    /// Adds Notch's hooks to Claude Code and Codex (after any existing hooks, with a backup,
+    /// removable in Settings) and switches Start with Windows on. Done once.
     fn offer_hooks(&mut self) {
-        if self.cfg.hooks_prompted || !self.cfg.adapters.claude {
+        if self.cfg.hooks_prompted {
             return;
         }
         self.cfg.hooks_prompted = true;
         config::save(&self.cfg);
-        if self.query_hooks_installed() {
-            return;
+        use crate::adapters::claude_hooks as h;
+        let claude = h::default_settings();
+        // only where the agent is actually installed
+        if self.cfg.adapters.claude && claude.parent().map(|d| d.is_dir()).unwrap_or(false) && !h::installed(&claude) {
+            match h::install(&h::windows_target(None)) {
+                Ok(m) => logln!("first run: {m}"),
+                Err(e) => logln!("first run: Claude Code hooks not installed: {e}"),
+            }
         }
-        let text = "Install Claude Code hooks so sessions show up live?\n\nThis adds entries to ~/.claude/settings.json next to your existing hooks. \
-                    A backup is saved first, and you can remove them again in Notch settings.";
-        if winutil::message_box(self.hwnd, "Notch", text, true) {
-            self.hooks_installed = false;
-            self.toggle_hooks();
+        let codex = crate::adapters::codex::codex_home();
+        if self.cfg.adapters.codex && codex.is_dir() && !h::installed(&codex.join("hooks.json")) {
+            match h::install(&h::codex_target(None)) {
+                Ok(m) => logln!("first run: {m}"),
+                Err(e) => logln!("first run: Codex hooks not installed: {e}"),
+            }
         }
+        if crate::util::exe_path() == crate::install::install_dir().join("notch.exe") && !winutil::autostart_enabled() {
+            winutil::set_autostart(true);
+        }
+        self.hooks_installed = self.query_hooks_installed();
     }
 
     fn click_session(&mut self, i: usize) {
@@ -1679,6 +1693,21 @@ pub fn run(opts: Opts) -> i32 {
     unsafe {
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         let snapshot = opts.snapshot.is_some();
+        // Double-clicking a downloaded notch.exe installs it: copy to the user's Programs
+        // folder, add shortcuts, start that copy. Nothing to do by hand.
+        let plain = opts.bench.is_none() && !opts.demo && !opts.no_prompt && !snapshot && opts.edge.is_none() && crate::util::instance_suffix().is_empty();
+        let me = crate::util::exe_path();
+        let dev_build = me.to_string_lossy().to_lowercase().contains("\\target\\");
+        if plain && !dev_build && me != crate::install::install_dir().join("notch.exe") {
+            match crate::install::install() {
+                Ok(m) => logln!("self-install: {}", m.replace('\n', " | ")),
+                Err(e) => {
+                    logln!("self-install failed: {e}");
+                    winutil::message_box(HWND::default(), "Notch", &format!("Notch could not install itself:\n\n{e}"), false);
+                }
+            }
+            return 0;
+        }
         if !snapshot {
             let name = crate::util::wide(&format!("Local\\NotchIslandSingleton{}", crate::util::instance_suffix()));
             let _mutex = CreateMutexW(None, true, PCWSTR(name.as_ptr()));
