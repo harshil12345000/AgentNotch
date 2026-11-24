@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notch: your AI coding agents at a glance</title>
+<meta name="description" content="A tiny Mac-style notch for Windows that shows your Claude Code, Codex and T3 Code sessions live. About 1 MB, no installer.">
+<meta property="og:title" content="Notch: your AI coding agents at a glance">
+<meta property="og:description" content="A tiny Mac-style notch for Windows that shows your AI coding agent sessions live.">
+<meta property="og:image" content="img/hero.png">
+<link rel="icon" href="img/notch.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #08090b; --panel: #111216; --line: rgba(255,255,255,.09); --text: #f4f4f6; --dim: #a3a5b1;
+    --blue: #3b9bff; --amber: #ffb020; --green: #34c759; --red: #ff453a; --violet: #a78bfa;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: "DM Sans", system-ui, "Segoe UI", sans-serif; font-size: 17px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+  a { color: inherit; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px; }
+  nav { display: flex; align-items: center; justify-content: space-between; padding: 22px 0; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; text-decoration: none; }
+  .brand img { width: 28px; height: 28px; }
+  nav .links { display: flex; gap: 22px; font-size: 15px; color: var(--dim); }
+  nav .links a { text-decoration: none; }
+  nav .links a:hover { color: var(--text); }
+
+  header.hero { text-align: center; padding: 56px 0 28px; }
+  .pill { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border: 1px solid var(--line); border-radius: 999px; color: var(--dim); font-size: 14px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  h1 { font-size: clamp(38px, 6.4vw, 68px); line-height: 1.04; letter-spacing: -0.03em; margin: 22px auto 16px; max-width: 14ch; font-weight: 700; }
+  .lede { color: var(--dim); font-size: clamp(17px, 2.1vw, 20px); max-width: 58ch; margin: 0 auto 30px; }
+  .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .btn { display: inline-flex; align-items: center; gap: 10px; padding: 14px 22px; border-radius: 14px; font-weight: 600; font-size: 16px; text-decoration: none; border: 1px solid var(--line); transition: transform .15s ease, background .15s ease; }
+  .btn:hover { transform: translateY(-1px); }
+  .btn.primary { background: #fff; color: #0a0a0c; border-color: #fff; }
+  .btn.ghost { background: rgba(255,255,255,.04); }
+  .btn.off { color: var(--dim); cursor: default; background: transparent; }
+  .btn.off:hover { transform: none; }
+  .btn svg { width: 18px; height: 18px; flex: none; }
+  .meta { margin-top: 16px; color: var(--dim); font-size: 14px; }
+
+  .shot { margin: 44px auto 0; border-radius: 20px; overflow: hidden; border: 1px solid var(--line); box-shadow: 0 40px 120px rgba(0,0,0,.6); }
+  .shot img { display: block; width: 100%; height: auto; }
+  .caption { color: var(--dim); font-size: 13px; text-align: center; margin-top: 12px; }
+
+  section { padding: 84px 0 0; }
+  h2 { font-size: clamp(26px, 3.6vw, 38px); letter-spacing: -0.02em; margin: 0 0 10px; font-weight: 700; }
+  .sub { color: var(--dim); max-width: 62ch; margin: 0 0 34px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 22px; }
+  .card h3 { margin: 0 0 6px; font-size: 17px; font-weight: 600; display: flex; align-items: center; gap: 9px; }
+  .card p { margin: 0; color: var(--dim); font-size: 15px; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 10px 26px; margin-top: 26px; color: var(--dim); font-size: 15px; }
+  .legend span { display: inline-flex; align-items: center; gap: 8px; }
+
+  .two { display: grid; grid-template-columns: 1.1fr .9fr; gap: 30px; align-items: center; }
+  .two .shot { margin: 0; }
+  .side-shots { display: flex; gap: 16px; align-items: flex-start; justify-content: center; }
+  .side-shots img { border-radius: 16px; border: 1px solid var(--line); max-width: 100%; height: auto; }
+
+  ol.steps { counter-reset: s; list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+  ol.steps li { counter-increment: s; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 18px 20px 18px 62px; position: relative; }
+  ol.steps li::before { content: counter(s); position: absolute; left: 20px; top: 18px; width: 28px; height: 28px; border-radius: 50%; background: rgba(255,255,255,.08); display: grid; place-items: center; font-weight: 600; font-size: 14px; }
+  ol.steps p { margin: 4px 0 0; color: var(--dim); font-size: 15px; }
+  code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: .9em; background: rgba(255,255,255,.07); padding: 2px 7px; border-radius: 7px; }
+  .note { margin-top: 18px; color: var(--dim); font-size: 14.5px; border-left: 2px solid var(--line); padding-left: 14px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th, td { text-align: left; padding: 13px 14px; border-bottom: 1px solid var(--line); }
+  th { color: var(--dim); font-weight: 500; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .table { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; overflow-x: auto; }
+
+  footer { margin-top: 96px; border-top: 1px solid var(--line); padding: 30px 0 46px; color: var(--dim); font-size: 14px; display: flex; flex-wrap: wrap; gap: 12px 24px; justify-content: space-between; }
+  footer a { text-decoration: none; }
+  footer a:hover { color: var(--text); }
+
+  @media (max-width: 760px) {
+    .two { grid-template-columns: 1fr; }
+    nav .links { gap: 16px; }
+    nav .links .hide { display: none; }
+    header.hero { padding-top: 34px; }
+    section { padding-top: 64px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav>
+    <a class="brand" href="#top"><img src="img/notch.png" alt=""> Notch</a>
+    <div class="links">
+      <a class="hide" href="#features">Features</a>
+      <a class="hide" href="#install">Install</a>
+      <a class="hide" href="#performance">Performance</a>
+      <a href="https://github.com/harshil12345000/AgentNotch">GitHub</a>
+    </div>
+  </nav>
+
+  <header class="hero" id="top">
+    <span class="pill"><span class="dot" style="background:var(--green)"></span> Free and open source · Windows 10 and 11</span>
+    <h1>Your AI coding agents, at a glance.</h1>
+    <p class="lede">Notch is a tiny Mac-style notch for Windows. It sits on the edge of your screen and shows which Claude Code, Codex and T3 Code sessions are working, which are waiting on you, and which are done.</p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/harshil12345000/AgentNotch/releases/latest/download/notch.exe">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 5.5 10.5 4.4v7.1H3zm8.6-1.2L21 3v8.5h-9.4zM3 12.5h7.5v7.1L3 18.5zm8.6 0H21V21l-9.4-1.3z"/></svg>
+        Download for Windows
+      </a>
+      <a class="btn ghost" href="https://github.com/harshil12345000/AgentNotch">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+        View on GitHub
+      </a>
+      <span class="btn off" title="Notch is a native Windows app">macOS: not available</span>
+    </div>
+    <p class="meta">One exe, about 1 MB. No installer, no runtime, no telemetry.</p>
+
+    <div class="shot"><img src="img/hero.png" alt="Notch open at the top of the screen showing four sessions, usage limits and toggles, with the collapsed side tab on the right edge" width="1600" height="900"></div>
+    <p class="caption">Rendered by Notch itself from demo data.</p>
+  </header>
+
+  <section id="features">
+    <h2>Everything your agents are doing, in one small strip</h2>
+    <p class="sub">Hover to open it, move away and it closes. It only speaks up when a session needs you.</p>
+    <div class="grid">
+      <div class="card"><h3>Live sessions</h3><p>Every open Claude Code session with its real title, current step and elapsed time. Codex and T3 Code too.</p></div>
+      <div class="card"><h3>Subagents</h3><p>Each subagent running inside a session is listed under it, with what it is doing right now.</p></div>
+      <div class="card"><h3>Approve or deny</h3><p>Answer a permission request from the notch or straight from the toast, without switching windows.</p></div>
+      <div class="card"><h3>Jump to the session</h3><p>Click a row to open exactly that session in the Claude desktop app, or raise its terminal.</p></div>
+      <div class="card"><h3>Usage limits</h3><p>Your 5-hour and weekly Claude usage as percentages, with the time until each resets.</p></div>
+      <div class="card"><h3>Remote Control</h3><p>Start or stop Claude Code Remote Control in one click, to carry on from your phone.</p></div>
+      <div class="card"><h3>Keep Awake</h3><p>Close the lid and keep working on an external monitor. It stays on until you switch it off.</p></div>
+      <div class="card"><h3>Travel Mode</h3><p>Keep Awake, Remote Control and a full-screen hotspot reminder, together.</p></div>
+      <div class="card"><h3>Docks anywhere</h3><p>Drag it to any point on the top, bottom, left or right edge of any monitor, or let it float.</p></div>
+    </div>
+    <div class="legend">
+      <span><span class="dot" style="background:var(--blue)"></span> Working</span>
+      <span><span class="dot" style="background:var(--amber)"></span> Needs you</span>
+      <span><span class="dot" style="background:var(--green)"></span> Finished</span>
+      <span><span class="dot" style="background:var(--red)"></span> Error</span>
+    </div>
+  </section>
+
+  <section>
+    <div class="two">
+      <div>
+        <h2>On any edge</h2>
+        <p class="sub" style="margin-bottom:0">On the left or right it becomes a slim vertical tab that opens into a narrower, taller panel with a scrolling list. On the bottom it sits on top of the taskbar and opens upward. A hotkey hides it, and it gets out of the way of fullscreen apps.</p>
+      </div>
+      <div class="side-shots">
+        <img src="img/side-tab.png" alt="Collapsed side tab with three status dots and an arrow" width="123" height="377" style="width:74px">
+        <img src="img/side.png" alt="Open side panel with five sessions" width="522" height="863" style="width:300px">
+      </div>
+    </div>
+  </section>
+
+  <section id="install">
+    <h2>Install</h2>
+    <p class="sub">Windows 10 or 11, 64-bit. No administrator rights needed.</p>
+    <ol class="steps">
+      <li><strong>Download <a href="https://github.com/harshil12345000/AgentNotch/releases/latest/download/notch.exe">notch.exe</a></strong><p>Double-click it if you just want to try it.</p></li>
+      <li><strong>Install it</strong><p>In a terminal: <code>notch.exe --install</code>. This puts it in your user Programs folder, adds Desktop and Start Menu shortcuts, and starts it.</p></li>
+      <li><strong>Let it add the Claude Code hooks</strong><p>It asks on first start. Your existing hooks are left untouched, a backup is saved first, and uninstalling restores the file exactly.</p></li>
+    </ol>
+    <p class="note">The exe is not code-signed, so Windows SmartScreen may warn the first time: choose "More info", then "Run anyway". Prefer not to trust a download? <a href="https://github.com/harshil12345000/AgentNotch#build-from-source">Build it from source</a>.</p>
+    <p class="note">There is no macOS version. Notch is written against the Windows graphics and window APIs.</p>
+  </section>
+
+  <section id="performance">
+    <h2>Built to be invisible in Task Manager</h2>
+    <p class="sub">Native Rust and Direct2D. No web view, no GPU device, and it draws only when something changes.</p>
+    <div class="table">
+      <table>
+        <thead><tr><th>Case</th><th class="num">CPU average</th><th class="num">CPU peak</th><th class="num">Memory</th></tr></thead>
+        <tbody>
+          <tr><td>Idle, no sessions</td><td class="num">0.002%</td><td class="num">0.13%</td><td class="num">24 MB</td></tr>
+          <tr><td>5 sessions, 3 dots pulsing, collapsed</td><td class="num">0.22%</td><td class="num">0.78%</td><td class="num">12 MB after trim</td></tr>
+          <tr><td>5 sessions, 3 dots pulsing, open</td><td class="num">0.38%</td><td class="num">0.95%</td><td class="num">13 MB after trim</td></tr>
+          <tr><td>5 sessions, about 80 events a second</td><td class="num">1.85%</td><td class="num">4.23%</td><td class="num">41 MB peak</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">Measured on Windows 11, 12 logical cores, 150% scaling. CPU is the share of the whole machine. The idle row was measured on an early build. <a href="https://github.com/harshil12345000/AgentNotch#what-is-and-is-not-verified">What is and is not verified</a>.</p>
+  </section>
+
+  <footer>
+    <span>Notch is an independent project, not affiliated with Anthropic, OpenAI or T3.</span>
+    <span><a href="https://github.com/harshil12345000/AgentNotch">GitHub</a> · <a href="https://github.com/harshil12345000/AgentNotch/releases">Releases</a> · <a href="https://github.com/harshil12345000/AgentNotch#readme">Docs</a></span>
+  </footer>
+</div>
+</body>
+</html>
