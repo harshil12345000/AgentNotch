@@ -105,6 +105,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_: Notification) {
+        logLine("terminating")
         KeepAwake.hold(false)
         Travel.closeReminder()
         state.saveConfig()
@@ -413,7 +414,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if p["quit"]?.bool == true { NSApp.terminate(nil) }
         if p["summon"]?.bool == true { summon() }
         let sid = p.str("decide")
-        if !sid.isEmpty, !state.decide(sid, allow: p["allow"]?.bool == true) { openSession(id: sid) }
+        if !sid.isEmpty, !state.decide(sid, allow: p["allow"]?.bool == true) {
+            logLine("decide: nothing was waiting for that session")
+            openSession(id: sid)
+        }
     }
 
     private func housekeeping() {
@@ -513,6 +517,8 @@ enum Demo {
 
 @MainActor
 enum AppMain {
+    private static var termSource: DispatchSourceSignal?
+
     static func run(_ args: [String]) {
         func after(_ flag: String) -> String? {
             guard let i = args.firstIndex(of: flag), i + 1 < args.count else { return nil }
@@ -525,6 +531,17 @@ enum AppMain {
         if !args.contains("--demo"), !args.contains("--no-install"), SelfInstall.relocateIfNeeded() { return }
         // already running: ask that one to show itself instead of starting twice
         if !args.contains("--demo"), CLI.control(.object([.init("summon", .bool(true))])) { return }
+        // a hook that gave up waiting must never take the app down with a broken pipe
+        signal(SIGPIPE, SIG_IGN)
+        atexit { logLine("exit") }
+        signal(SIGTERM, SIG_IGN)
+        let term = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+        term.setEventHandler {
+            logLine("asked to stop (SIGTERM)")
+            NSApp.terminate(nil)
+        }
+        term.resume()
+        termSource = term
         let app = NSApplication.shared
         let delegate = AppDelegate()
         delegate.demo = args.contains("--demo")

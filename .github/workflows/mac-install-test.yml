@@ -8,6 +8,12 @@ jobs:
   install:
     runs-on: macos-latest
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Build this commit
+        working-directory: mac
+        run: chmod +x bundle.sh && ./bundle.sh
+
       - name: One-line installer
         run: |
           curl -fsSL https://agentnotch-six.vercel.app/install.sh | sh
@@ -21,7 +27,8 @@ jobs:
       - name: Downloaded zip moves itself to ~/Applications
         run: |
           mkdir -p "$HOME/Downloads/n" && cd "$HOME/Downloads/n"
-          curl -fsSL -o Notch-mac.zip https://github.com/harshil12345000/AgentNotch/releases/latest/download/Notch-mac.zip
+          cp "$GITHUB_WORKSPACE/mac/dist/Notch-mac.zip" Notch-mac.zip
+          chk() { if pgrep -x Notch >/dev/null; then echo "alive after: $1"; else echo "DEAD after: $1"; fi; }
           ditto -x -k Notch-mac.zip .
           mkdir -p "$HOME/.claude" && echo '{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"echo mine"}]}]}}' > "$HOME/.claude/settings.json"
           mkdir -p "$HOME/Library/Application Support/Notch" && echo '{"approveInTerminal": true}' > "$HOME/Library/Application Support/Notch/config.json"
@@ -37,11 +44,11 @@ jobs:
           B="$HOME/Applications/Notch.app/Contents/MacOS/Notch"
           echo '{"session_id":"ci-1","cwd":"/tmp/demo","hook_event_name":"UserPromptSubmit"}' | "$B" --hook
           echo '{"session_id":"ci-1","cwd":"/tmp/demo","hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"swift test"}}' | "$B" --hook
-          sleep 1
+          chk "two hook events"; sleep 1
           (echo '{"session_id":"ci-1","cwd":"/tmp/demo","hook_event_name":"PermissionRequest","tool_name":"Bash","tool_input":{"command":"git push"}}' | "$B" --hook > /tmp/decision.txt) &
-          sleep 2
+          sleep 2; chk "permission request"
           "$B" --decide ci-1 allow || true
-          sleep 2
+          sleep 2; chk "decide"
           echo "permission hook returned: $(cat /tmp/decision.txt)"
           echo "--- still running?"
           pgrep -lf "Applications/Notch.app" || echo "NOTCH IS NOT RUNNING ANY MORE"
@@ -60,7 +67,7 @@ jobs:
         run: |
           B="$HOME/Applications/Notch.app/Contents/MacOS/Notch"
           pkill -x Notch || true; sleep 1
-          "$B" > /tmp/app.out 2>&1 &
+          "$B" --no-install > /tmp/app.out 2>&1 &
           sleep 5
           chk() { if pgrep -x Notch >/dev/null; then echo "alive after: $1"; else echo "DEAD after: $1"; fi; }
           chk "start"
