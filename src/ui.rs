@@ -346,6 +346,17 @@ pub fn draw(a: &App, hits: &mut Vec<Hit>) {
 }
 
 /// Collapsed content for the left / right edge: count on top, one dot per session below,
+/// The window to show on the small collapsed bar: the 5-hour one while a session block is
+/// running, otherwise the weekly one (so the bar is not blank between sessions).
+fn pill_window(a: &App) -> Option<f32> {
+    a.usage
+        .five_hour
+        .as_ref()
+        .filter(|u| u.has_bar())
+        .or_else(|| a.usage.week.as_ref().filter(|u| u.has_bar()))
+        .and_then(|u| u.pct)
+}
+
 /// usage as a small vertical bar at the bottom.
 fn collapsed_vertical(a: &App, g: &Gfx, t: &Theme, x: f32, y: f32, w: f32, h: f32) {
     let sx = if a.edge == Edge::Right { x + w - VPILL_W } else { x };
@@ -353,7 +364,7 @@ fn collapsed_vertical(a: &App, g: &Gfx, t: &Theme, x: f32, y: f32, w: f32, h: f3
     let cx = sx + VPILL_W / 2.0;
     let mut bottom = top + VPILL_H - 12.0;
 
-    if let Some(p) = a.usage.five_hour.as_ref().filter(|u| u.has_bar()).and_then(|u| u.pct) {
+    if let Some(p) = pill_window(a) {
         let bh = 26.0;
         bottom -= bh;
         g.fill_rr(cx - 2.0, bottom, 4.0, bh, 2.0, t.track);
@@ -400,7 +411,7 @@ fn collapsed(a: &App, g: &Gfx, t: &Theme, x: f32, y: f32, w: f32) {
     let mut rx = right - 14.0;
 
     // tiny usage bar (5-hour window)
-    if let Some(p) = a.usage.five_hour.as_ref().filter(|u| u.has_bar()).and_then(|u| u.pct) {
+    if let Some(p) = pill_window(a) {
         let bw = 34.0;
         rx -= bw;
         g.fill_rr(rx, cy - 2.0, bw, 4.0, 2.0, t.track);

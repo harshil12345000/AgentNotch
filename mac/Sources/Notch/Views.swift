@@ -431,7 +431,8 @@ struct CollapsedView: View {
                 Spacer(minLength: 0)
                 if state.remote != .off { Image(systemName: "iphone").font(.system(size: 10)).foregroundColor(Palette.blue) }
                 if state.awake { Image(systemName: "sun.max.fill").font(.system(size: 10)).foregroundColor(Palette.amber) }
-                if let w = state.usage.fiveHour, w.active {
+                // the 5-hour window while a block is running, else the weekly one
+                if let w = (state.usage.fiveHour?.active == true ? state.usage.fiveHour : (state.usage.week?.active == true ? state.usage.week : nil)) {
                     ZStack(alignment: .leading) {
                         Capsule().fill(Color.white.opacity(0.16)).frame(width: 30, height: 4)
                         Capsule().fill(w.pct > 90 ? Palette.red : (w.pct >= 60 ? Palette.amber : .white.opacity(0.8))).frame(width: max(3, 30 * w.pct / 100), height: 4)
