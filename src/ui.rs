@@ -103,6 +103,8 @@ pub enum Action {
     Back,
     Remote,
     Awake,
+    /// Travel mode: Remote Control + Keep Awake + a hotspot reminder, in one click.
+    Travel,
     Usage,
     Set(Setting),
 }
@@ -209,6 +211,7 @@ pub const BLUE: u32 = 0x3B9BFF;
 pub const AMBER: u32 = 0xFFB020;
 pub const GREEN: u32 = 0x34C759;
 pub const RED: u32 = 0xFF453A;
+pub const VIOLET: u32 = 0xA78BFA;
 
 fn state_color(s: State) -> Color {
     hex(match s {
@@ -282,7 +285,8 @@ pub fn content_height(a: &App) -> f32 {
         View::Main => {
             let stale = if usage_stale(a).is_some() { 14.0 } else { 0.0 };
             // side layout stacks the two toggles
-            let toggles = if panel_width(a) < 340.0 { 36.0 * 2.0 + 6.0 } else { 36.0 };
+            // two toggles (stacked on the side layout) and the travel mode button under them
+            let toggles = if panel_width(a) < 340.0 { 36.0 * 3.0 + 12.0 } else { 36.0 * 2.0 + 6.0 };
             HEADER_H + list_height(a) + 8.0 + 48.0 + stale + 8.0 + toggles + 12.0
         }
         View::Settings => HEADER_H + SETTINGS.len() as f32 * SET_ROW_H + 10.0,
@@ -636,7 +640,12 @@ fn expanded(a: &App, g: &Gfx, t: &Theme, x: f32, y: f32, w: f32, hits: &mut Vec<
     let (ax, ay) = if narrow { (x + 16.0, cy + 42.0) } else { (x + 16.0 + bw + 8.0, cy) };
     toggle(g, t, ax, ay, bw, "\u{E706}", "Keep Awake", a.awake_label(), a.awake, hex(AMBER), hov(&Action::Awake));
     hits.push(Hit { x: ax, y: ay, w: bw, h: 36.0, action: Action::Awake });
-    cy = ay + 36.0;
+    // travel mode: full width under the two toggles
+    let ty = ay + 42.0;
+    let on = a.cfg.travel_mode;
+    let state = if on { "On · click to switch off" } else if narrow { "Off" } else { "Off · Remote Control, Keep Awake, hotspot reminder" };
+    toggle(g, t, x + 16.0, ty, w - 32.0, "\u{E709}", "Travel Mode", state, on, hex(VIOLET), hov(&Action::Travel));
+    hits.push(Hit { x: x + 16.0, y: ty, w: w - 32.0, h: 36.0, action: Action::Travel });
 }
 
 #[allow(clippy::too_many_arguments)]

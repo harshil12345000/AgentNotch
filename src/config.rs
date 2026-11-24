@@ -12,6 +12,8 @@ pub struct Config {
     /// Keep Awake was switched on: it is applied again at every start and is left in
     /// place when Notch quits, until it is switched off.
     pub keep_awake: bool,
+    /// Travel mode is on (Remote Control + Keep Awake, switched on together).
+    pub travel_mode: bool,
     /// Show Approve / Deny on a session that is asking for permission.
     pub approve_from_notch: bool,
     /// Also do that for terminal sessions. Off by default: there the hook may hold back
@@ -107,6 +109,7 @@ impl Default for Config {
             theme: "dark".into(),
             hotkey: "Ctrl+\\".into(),
             keep_awake: false,
+            travel_mode: false,
             approve_from_notch: true,
             approve_in_terminal: false,
             glass: false,

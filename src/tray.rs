@@ -10,6 +10,7 @@ pub enum Cmd {
     Settings,
     Autostart,
     ClearFinished,
+    Travel,
     Quit,
 }
 
@@ -63,11 +64,12 @@ pub fn remove(hwnd: HWND) {
     }
 }
 
-pub fn popup(hwnd: HWND, shown: bool) -> Cmd {
+pub fn popup(hwnd: HWND, shown: bool, travel: bool) -> Cmd {
     unsafe {
         let Ok(menu) = CreatePopupMenu() else { return Cmd::None };
         let _ = AppendMenuW(menu, MF_STRING, 1, if shown { w!("Hide") } else { w!("Show") });
         let _ = AppendMenuW(menu, MF_STRING, 5, w!("Clear finished sessions"));
+        let _ = AppendMenuW(menu, MF_STRING | if travel { MF_CHECKED } else { MF_UNCHECKED }, 6, w!("Travel mode"));
         let _ = AppendMenuW(menu, MF_STRING, 2, w!("Settings"));
         let auto = if crate::winutil::autostart_enabled() { MF_CHECKED } else { MF_UNCHECKED };
         let _ = AppendMenuW(menu, MF_STRING | auto, 3, w!("Start with Windows"));
@@ -84,6 +86,7 @@ pub fn popup(hwnd: HWND, shown: bool) -> Cmd {
             3 => Cmd::Autostart,
             4 => Cmd::Quit,
             5 => Cmd::ClearFinished,
+            6 => Cmd::Travel,
             _ => Cmd::None,
         }
     }

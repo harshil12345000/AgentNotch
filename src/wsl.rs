@@ -21,7 +21,7 @@ pub fn running_distros() -> Vec<String> {
     String::from_utf16_lossy(&units).lines().map(|l| l.trim().trim_start_matches('\u{feff}').to_string()).filter(|l| !l.is_empty()).collect()
 }
 
-/// $HOME of the default user in a distro, e.g. "/home/harsh".
+/// $HOME of the default user in a distro, e.g. "/home/you".
 pub fn home_of(distro: &str) -> Option<String> {
     let out = run(&["-d", distro, "-e", "sh", "-c", "printf %s \"$HOME\""])?;
     let h = String::from_utf8_lossy(&out).trim().to_string();

@@ -236,6 +236,19 @@ started it: a Claude process started with `remote-control` / `--rc`, or a runnin
 whose transcript carries a Remote Control marker (for example the Claude desktop app's
 "Connect new sessions to Remote Control"). Notch cannot stop those.
 
+## Travel mode
+
+One button (in the panel, and in the tray menu) for working away from your desk:
+
+- switches **Keep Awake** on,
+- starts **Remote Control** if it is not already running,
+- covers the screen with a reminder, **Turn On Mobile Hotspot**, until you dismiss it
+  (click anywhere, or Esc / Enter / Space). Its button opens Windows' hotspot settings.
+
+Clicking it again switches travel mode off: Keep Awake goes off and a Remote Control that
+Notch started is stopped. Both toggles still work on their own. Notch cannot switch the
+hotspot on for you; the reminder is only a reminder.
+
 ## Keep Awake
 
 On: sets "when I close the lid: do nothing" for both plugged in and on battery (active
@@ -358,6 +371,8 @@ Not verified:
 - Jump to session: Windows accepts the `claude://` link Notch opens; that the app then
   switches to a *different* session has not been watched.
 
+- Travel mode: the reminder screen and the button have been rendered and captured, but
+  the button has not been pressed (it changes power settings and opens a terminal).
 - Keep Awake and Remote Control start/stop have not been pressed (they change system
   state). Only the state detection has run.
 - Dragging between edges, the hotkey, toasts on screen, click-to-focus, multi-monitor and

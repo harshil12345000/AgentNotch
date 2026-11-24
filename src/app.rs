@@ -145,6 +145,8 @@ pub struct Opts {
     pub no_prompt: bool,
     /// Tests only: offer Approve / Deny for every session, hosted or not.
     pub hold_all: bool,
+    /// Tests only: put the travel mode reminder on screen at start.
+    pub overlay_test: bool,
     /// Snapshot / demo only: dock to this edge ("top", "bottom", "left", "right", "free") at `at` (0..1).
     pub edge: Option<String>,
     pub at: Option<f32>,
@@ -854,6 +856,7 @@ impl App {
             }
             Action::Remote => self.toggle_remote(),
             Action::Awake => self.toggle_awake(),
+            Action::Travel => self.toggle_travel(),
             Action::Usage => self.refresh_usage(true),
             Action::Set(s) => self.change_setting(s),
         }
@@ -1207,6 +1210,58 @@ impl App {
         self.refresh_awake();
     }
 
+    // ---- Travel mode
+
+    /// The full-screen reminder travel mode puts up, on the monitor the notch is on.
+    pub fn hotspot_reminder(&self) {
+        let c = self.pill_center();
+        let m = self.mon_at(c.0, c.1);
+        crate::overlay::show(m.rc, m.scale, "Turn On Mobile Hotspot", "Travel mode is on: Remote Control and Keep Awake are set.");
+    }
+
+    /// On: Keep Awake on, Remote Control on, and a full-screen reminder to turn on the
+    /// phone's hotspot. Off: Keep Awake off and the Remote Control that Notch started
+    /// stopped. Each part can still be switched on its own with its own toggle.
+    fn toggle_travel(&mut self) {
+        let on = !self.cfg.travel_mode;
+        self.cfg.travel_mode = on;
+        if on {
+            if !self.awake_hold {
+                match crate::power::enable() {
+                    Ok(_) => {
+                        self.awake_hold = true;
+                        self.cfg.keep_awake = true;
+                    }
+                    Err(e) => {
+                        winutil::message_box(self.hwnd, "Notch", &format!("Travel mode could not switch Keep Awake on:\n\n{e}"), false);
+                    }
+                }
+            }
+            self.refresh_rc(true);
+            if self.rc == RcState::Off {
+                self.toggle_remote();
+            }
+            self.hotspot_reminder();
+        } else {
+            crate::overlay::close();
+            if self.awake_hold || crate::power::lid_is_do_nothing() {
+                self.awake_hold = false;
+                self.cfg.keep_awake = false;
+                if let Err(e) = crate::power::disable(true) {
+                    winutil::message_box(self.hwnd, "Notch", &format!("Travel mode could not switch Keep Awake off:\n\n{e}"), false);
+                }
+            }
+            if self.rc_ours {
+                crate::rc::stop();
+            }
+        }
+        logln!("travel mode: {}", if on { "on" } else { "off" });
+        config::save(&self.cfg);
+        self.refresh_awake();
+        self.refresh_rc(false);
+        self.kick();
+    }
+
     // ---- Usage
 
     /// Ask for fresh usage numbers. `force` = the user opened the panel or clicked the
@@ -1467,7 +1522,7 @@ impl App {
     }
 
     fn menu(&mut self) {
-        match tray::popup(self.hwnd, self.shown) {
+        match tray::popup(self.hwnd, self.shown, self.cfg.travel_mode) {
             tray::Cmd::ShowHide => {
                 self.user_hidden = self.shown;
                 self.fs_hidden = false;
@@ -1485,6 +1540,10 @@ impl App {
                 self.kick();
             }
             tray::Cmd::Autostart => winutil::set_autostart(!winutil::autostart_enabled()),
+            tray::Cmd::Travel => {
+                self.toggle_travel();
+                self.invalidate();
+            }
             tray::Cmd::ClearFinished => {
                 self.store.clear_finished();
                 self.update_visibility();
@@ -1500,6 +1559,7 @@ impl App {
     }
 
     fn shutdown(&mut self) {
+        crate::overlay::close();
         // Keep Awake that was switched on stays on: the lid setting is left in place and is
         // picked up again at the next start. Otherwise put the power settings back exactly
         // as they were.
@@ -1810,6 +1870,9 @@ pub fn run(opts: Opts) -> i32 {
         }
         if !a.quiet && !opts.no_prompt {
             let _ = PostMessageW(Some(hwnd), WM_FIRSTRUN, WPARAM(0), LPARAM(0));
+        }
+        if opts.overlay_test {
+            a.hotspot_reminder();
         }
         a.timer(T_TRIM, Some(12_000));
         logln!("notch started (scale {:.2}, {} monitor(s))", a.scale, a.mons.len());

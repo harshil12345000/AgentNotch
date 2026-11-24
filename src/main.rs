@@ -14,6 +14,7 @@ mod ipc;
 mod log;
 mod logos;
 mod model;
+mod overlay;
 mod power;
 mod proc;
 mod rc;
@@ -155,6 +156,7 @@ fn main() {
         settings: has("--settings"),
         no_prompt: has("--no-prompt"),
         hold_all: has("--hold-all"),
+        overlay_test: has("--overlay-test"),
         edge: after("--edge"),
         at: after("--at").and_then(|s| s.parse().ok()),
     };
