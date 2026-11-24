@@ -18,6 +18,8 @@ public struct Usage: Equatable {
     public var fiveHour: UsageWindow?
     public var week: UsageWindow?
     public var fetchedAt: UInt64 = 0
+    /// The plan the numbers are scaled to ("Pro", "Max 20x", "Ultra"); empty if unknown.
+    public var plan = ""
     public var note = ""
     public init() {}
     public var hasNumbers: Bool { fiveHour != nil || week != nil }
@@ -51,6 +53,31 @@ public enum UsageAPI {
         if t.isEmpty { return nil }
         let exp = oauth["expiresAt"]?.double ?? 0
         return (t, exp > 0 && exp / 1000 < Double(nowUnix() + 60))
+    }
+
+    /// The plan the signed-in token belongs to, prettified ("pro" -> "Pro", "max_20x" ->
+    /// "Max 20x"). Empty when unknown.
+    public static func planLabel(from data: Data) -> String {
+        let raw = JSON.parse(data)?["claudeAiOauth"]?.str("subscriptionType") ?? ""
+        return prettyPlan(raw)
+    }
+
+    static func prettyPlan(_ raw: String) -> String {
+        switch raw {
+        case "": return ""
+        case "pro": return "Pro"
+        case "free": return "Free"
+        case "team": return "Team"
+        case "enterprise": return "Enterprise"
+        default:
+            return raw.split(separator: "_").map { part -> String in
+                switch part {
+                case "max": return "Max"
+                case "ultra": return "Ultra"
+                default: return part.prefix(1).uppercased() + part.dropFirst()
+                }
+            }.joined(separator: " ")
+        }
     }
 
     static func run(_ tool: String, _ args: [String], timeout: TimeInterval = 20) -> Data? {
@@ -114,6 +141,7 @@ public enum UsageAPI {
         case 200:
             if let d = body, var u = parse(d) {
                 u.fetchedAt = result.fetchedAt
+                u.plan = planLabel(from: creds)
                 return u
             }
             result.note = "Usage reply not understood"

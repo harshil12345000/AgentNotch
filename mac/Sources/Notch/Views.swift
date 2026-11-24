@@ -353,10 +353,13 @@ struct PanelView: View {
                 }.frame(maxWidth: .infinity, alignment: .leading).frame(height: 40)
             }.buttonStyle(.plain)
         } else if state.usage.hasNumbers {
-            VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
                 UsageRow(label: "5h", window: state.usage.fiveHour)
                 UsageRow(label: "Week", window: state.usage.week)
-            }.contentShape(Rectangle()).onTapGesture { actions.refreshUsage() }
+                if !state.usage.plan.isEmpty {
+                    Text("\(state.usage.plan) plan").font(.ui(11)).foregroundColor(Palette.dim).padding(.top, 2)
+                }
+            }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle()).onTapGesture { actions.refreshUsage() }
         } else {
             VStack(alignment: .leading, spacing: 1) {
                 Text(state.usageLoading ? "Usage limits: loading…" : "Usage limits: not available right now").font(.ui(11)).foregroundColor(.white)

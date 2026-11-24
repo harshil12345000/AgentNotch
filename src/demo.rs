@@ -35,6 +35,7 @@ pub fn fill(a: &mut App) {
         five_hour: Some(UsageWindow { pct: Some(72.0), tokens: None, resets_at: Some(now + 2 * 3600 + 13 * 60), active: true }),
         week: Some(UsageWindow { pct: Some(34.0), tokens: None, resets_at: Some(now + 3 * 86400 + 5 * 3600), active: true }),
         source: "api",
+        plan: "Ultra".into(),
         note: String::new(),
         fetched_at: now,
         loading: false,

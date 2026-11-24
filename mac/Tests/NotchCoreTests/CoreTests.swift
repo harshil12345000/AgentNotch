@@ -267,6 +267,9 @@ final class CoreTests: XCTestCase {
         let idle = UsageAPI.parse(Data(#"{"five_hour":{"utilization":0,"resets_at":null},"seven_day":{"utilization":15,"resets_at":"2026-11-27T09:00:00+00:00"}}"#.utf8))!
         XCTAssertEqual(idle.fiveHour?.active, false)
         XCTAssertEqual(idle.week?.active, true)
+        XCTAssertEqual(UsageAPI.planLabel(from: Data(#"{"claudeAiOauth":{"subscriptionType":"ultra"}}"#.utf8)), "Ultra")
+        XCTAssertEqual(UsageAPI.planLabel(from: Data(#"{"claudeAiOauth":{"subscriptionType":"max_20x"}}"#.utf8)), "Max 20x")
+        XCTAssertEqual(UsageAPI.planLabel(from: Data(#"{"claudeAiOauth":{"subscriptionType":"pro"}}"#.utf8)), "Pro")
         XCTAssertNil(UsageAPI.parse(Data("{}".utf8)))
         let live = UsageAPI.token(from: Data(#"{"claudeAiOauth":{"accessToken":"abc","expiresAt":\#((nowUnix() + 3600) * 1000)}}"#.utf8))
         XCTAssertEqual(live?.token, "abc")

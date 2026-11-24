@@ -63,7 +63,8 @@ fn save_last(u: &Usage) {
         Some(w) => format!("{name}\t{}\t{}\n", w.pct.map(|p| p.to_string()).unwrap_or_default(), w.resets_at.map(|r| r.to_string()).unwrap_or_default()),
         None => String::new(),
     };
-    let text = format!("at\t{}\n{}{}", u.fetched_at, line("five", &u.five_hour), line("week", &u.week));
+    let plan = if u.plan.is_empty() { String::new() } else { format!("plan\t{}\n", u.plan) };
+    let text = format!("at\t{}\n{plan}{}{}", u.fetched_at, line("five", &u.five_hour), line("week", &u.week));
     let _ = std::fs::write(last_path(), text);
 }
 
@@ -75,6 +76,7 @@ pub fn load_last() -> Option<Usage> {
         let mut p = l.split('\t');
         match (p.next()?, p.next(), p.next()) {
             ("at", Some(t), _) => u.fetched_at = t.parse().ok()?,
+            ("plan", Some(p), _) => u.plan = p.to_string(),
             (name @ ("five" | "week"), Some(pct), reset) => {
                 let resets_at: Option<u64> = reset.and_then(|r| r.parse().ok());
                 let pct: Option<f32> = pct.parse().ok();
@@ -114,6 +116,37 @@ struct OAuth {
     access_token: Option<String>,
     #[serde(rename = "expiresAt")]
     expires_at: Option<f64>,
+    #[serde(rename = "subscriptionType")]
+    subscription_type: Option<String>,
+}
+
+/// The plan the signed-in token belongs to, prettified ("pro" -> "Pro", "max_20x" ->
+/// "Max 20x"). Empty when unknown. This is the plan the usage percentages are scaled to.
+pub fn plan_label() -> String {
+    let raw = read_oauth().ok().and_then(|o| o.subscription_type).unwrap_or_default();
+    pretty_plan(&raw)
+}
+
+fn pretty_plan(raw: &str) -> String {
+    match raw {
+        "" => String::new(),
+        "pro" => "Pro".into(),
+        "free" => "Free".into(),
+        "team" => "Team".into(),
+        "enterprise" => "Enterprise".into(),
+        other => other
+            .split('_')
+            .map(|w| match w {
+                "max" => "Max".to_string(),
+                "ultra" => "Ultra".to_string(),
+                _ => {
+                    let mut c = w.chars();
+                    c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" "),
+    }
 }
 
 #[derive(Deserialize)]
@@ -183,7 +216,9 @@ impl UsageSource for ClaudeOAuth {
     }
     fn fetch(&self, _cfg: &UsageCfg) -> Result<Usage, String> {
         let (status, body, retry) = fetch_raw()?;
-        Self::read(status, &body, retry)
+        let mut u = Self::read(status, &body, retry)?;
+        u.plan = plan_label();
+        Ok(u)
     }
 }
 

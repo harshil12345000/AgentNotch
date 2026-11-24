@@ -623,9 +623,17 @@ fn expanded(a: &App, g: &Gfx, t: &Theme, x: f32, y: f32, w: f32, hits: &mut Vec<
         usage_row(g, t, x, cy + 24.0, w, "Week", a.usage.week.as_ref(), a.usage.source);
     }
     cy += 48.0;
+    // a meta line: which plan the numbers are scaled to, and how old they are
+    let mut meta: Vec<String> = Vec::new();
+    if !a.usage.plan.is_empty() {
+        meta.push(format!("{} plan", a.usage.plan));
+    }
     if let Some(age) = usage_stale(a) {
-        let why = if a.usage.note.contains("rate limited") { " · endpoint is rate limiting" } else { "" };
-        g.text(&format!("as of {} ago{why} · click to refresh", fmt_dur(age)), Font::Small, x + 16.0, cy - 2.0, w - 32.0, 14.0, Align::Left, t.dim);
+        let why = if a.usage.note.contains("rate limited") { ", endpoint is rate limiting" } else { "" };
+        meta.push(format!("as of {} ago{why} · click to refresh", fmt_dur(age)));
+    }
+    if !meta.is_empty() {
+        g.text(&meta.join(" · "), Font::Small, x + 16.0, cy - 2.0, w - 32.0, 14.0, Align::Left, t.dim);
         cy += 14.0;
     }
     cy += 8.0;

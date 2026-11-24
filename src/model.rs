@@ -520,6 +520,8 @@ pub struct Usage {
     pub week: Option<UsageWindow>,
     /// "api" | "estimate" | ""
     pub source: &'static str,
+    /// The plan the numbers are scaled to, e.g. "Pro", "Max 20x", "Ultra". Empty if unknown.
+    pub plan: String,
     pub note: String,
     pub fetched_at: u64,
     pub loading: bool,
